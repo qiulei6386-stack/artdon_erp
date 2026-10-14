@@ -1,4 +1,4 @@
-/* 推广中心 V1 静态原型：演示页面结构、角色差异与审批规则，不连接后端。 */
+/* 推广中心 V1。客户列表、客户详情、客户分组在登录后读取客户中心；其余页面仍是演示数据，不发送邮件。 */
 (function () {
   'use strict';
   var D = window.PM_DATA;
@@ -24,15 +24,42 @@
   function user(id) { return D.users.filter(function (u) { return u.id === id; })[0] || { name: '—' }; }
   function mailbox(id) { return D.mailboxes.filter(function (m) { return m.id === id; })[0]; }
   function campaign(id) { return D.campaigns.filter(function (c) { return c.id === id; })[0]; }
+  function liveOn() { return !!(window.PM_LIVE && window.PM_LIVE.ready && state.useLive); }
   function can(p) { return me().perms.indexOf(p) >= 0; }
   function allScope() { return me().scope !== 'self'; }
+  function liveCan(p) { return liveOn() ? (window.PM_LIVE.perms || []).indexOf(p) >= 0 : can(p); }
+  function liveAllScope() { return liveOn() ? window.PM_LIVE.scopeType === 'all' : allScope(); }
   function isManager() { return can('approve'); }
   function canCreate() { return can('task_create'); }
   function visibleCustomer(c) { return allScope() || c.owner === state.userId; }
-  function group(id) { return D.groups.filter(function (g) { return g.id === id; })[0]; }
-  function customer(id) { return D.customers.filter(function (c) { return c.id === id; })[0]; }
-  function visibleGroups() { return D.groups.filter(function (g) { return !g.deleted && (g.visibility === 'public' || g.createdBy === state.userId); }); }
-  function visibleMembers(g) { return g.members.map(customer).filter(function (c) { return c && visibleCustomer(c); }); }
+  function group(id) {
+    if (liveOn()) return (window.PM_LIVE.groups || []).filter(function (g) { return String(g.id) === String(id); })[0];
+    return D.groups.filter(function (g) { return g.id === id; })[0];
+  }
+  function customer(id) {
+    if (liveOn()) return window.PM_LIVE.customerById[+id] || null;
+    return D.customers.filter(function (c) { return c.id === id; })[0];
+  }
+  function visibleGroups() {
+    if (liveOn()) return (window.PM_LIVE.groups || []).slice();
+    return D.groups.filter(function (g) { return !g.deleted && (g.visibility === 'public' || g.createdBy === state.userId); });
+  }
+  function visibleMembers(g) {
+    if (!g) return [];
+    if (liveOn()) return (g.members || []).map(function (id) { return customer(id); }).filter(Boolean);
+    return g.members.map(customer).filter(function (c) { return c && visibleCustomer(c); });
+  }
+  function groupCount(g) {
+    if (liveOn() && g.visibleCount != null) return g.visibleCount;
+    return visibleMembers(g).length;
+  }
+  function creatorName(g) { return g.createdByName || user(g.createdBy).name; }
+  function ownerLabel(c) {
+    if (!c) return '—';
+    if (c.ownerName) return c.ownerName;
+    if (!c.owner) return '无负责人';
+    return user(c.owner).name;
+  }
   function chip(status, c) {
     var s = STATUS[status] || [status, ''];
     var label = s[0];
@@ -103,17 +130,26 @@
       ['home', '工作台', 0, 'M3 10.5 12 4l9 6.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z'],
       ['list', '推广', 0, 'M4 6h16M4 12h16M4 18h10'],
       ['board', '执行看板', 0, 'M4 20V10M10 20V4M16 20v-7M22 20H2'],
+      ['customers', '客户', 0, 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 20c1.2-3.2 4.2-5 8-5s6.8 1.8 8 5'],
       ['groups', '客户分组', 0, 'M8 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zm8.5 0a3 3 0 1 0 0-6M2 20c0-3.3 2.7-6 6-6s6 2.7 6 6m2-6c2.8.3 5 2.7 5 6'],
       ['approvals', isManager() ? '待我审批' : '审批记录', isManager() ? approvals : 0, 'M9 12l2 2 4-4M5 4h14v16H5z'],
       ['tasks', '人工待办', tasks, 'M8 6h12M8 12h12M8 18h12M3.5 6h.01M3.5 12h.01M3.5 18h.01'],
       ['settings', '设置', 0, 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z']
     ];
+    if (!window.PM_LIVE) nav = nav.filter(function (n) { return n[0] !== 'customers'; });
     $('#side-nav').innerHTML = nav.map(function (n) {
       var active = route === n[0] || (n[0] === 'list' && (route === 'detail' || route === 'new'));
       return '<a class="nav-item' + (active ? ' active' : '') + '" href="#/' + n[0] + '" title="' + n[1] + '"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="' + n[3] + '"/></svg><span class="nav-label">' + n[1] + '</span>' + (n[2] ? '<span class="nav-count num">' + n[2] + '</span>' : '') + '</a>';
     }).join('');
-    $('#role-select').innerHTML = D.users.map(function (x) { return '<option value="' + x.id + '"' + (x.id === u.id ? ' selected' : '') + '>' + x.name + '（' + x.role + '）</option>'; }).join('');
-    $('#perm-info').innerHTML = '数据范围：' + (u.scope === 'self' ? '本人' : '全部') + '<br>权限：' + u.perms.map(function (p) { return D.permLabels[p]; }).join('、');
+    var role = $('#role-select');
+    if (role) role.innerHTML = D.users.map(function (x) { return '<option value="' + x.id + '"' + (x.id === u.id ? ' selected' : '') + '>' + x.name + '（' + x.role + '）</option>'; }).join('');
+    var perm = $('#perm-info');
+    if (perm && liveOn() && window.PM_LIVE.user) {
+      var lu = window.PM_LIVE.user;
+      perm.innerHTML = '登录账号：' + esc(lu.name || '') + (lu.role_name ? '（' + esc(lu.role_name) + '）' : '') + '<br>客户范围：' + esc(window.PM_LIVE.scopeLabel || '');
+    } else if (perm) {
+      perm.innerHTML = '数据范围：' + (u.scope === 'self' ? '本人' : '全部') + '<br>权限：' + u.perms.map(function (p) { return D.permLabels[p]; }).join('、');
+    }
   }
 
   function crumbs(parts) { $('#crumbs').innerHTML = parts.map(function (p, i) { return i === parts.length - 1 ? '<b>' + esc(p) + '</b>' : esc(p); }).join(' / '); }
@@ -346,16 +382,69 @@
 
   /* 客户分组 */
   function customerChip(c) {
+    if (!c) return '';
+    var channels = c.channels || [];
     if (c.dnc) return '<span class="chip bad">禁联</span>';
-    if (c.channels.indexOf('no_promotion') >= 0) return '<span class="chip bad">拒推广</span>';
+    if (channels.indexOf('no_promotion') >= 0) return '<span class="chip bad">拒推广</span>';
     if (c.pstatus === 'blacklist') return '<span class="chip bad">黑名单</span>';
     if (c.pstatus === 'paused') return '<span class="chip warn">推广暂停</span>';
     if (c.unsub) return '<span class="chip warn">已退订</span>';
     if (!c.email) return '<span class="chip">无邮箱</span>';
     return '<span class="chip ok">可推广</span>';
   }
-  function canEditGroup(g) { return can('edit_group') && (g.visibility === 'public' || g.createdBy === state.userId); }
-  function canDeleteGroup(g) { return can('delete_group') && (g.createdBy === state.userId || allScope()); }
+  function canEditGroup(g) {
+    if (liveOn() && g.canEdit != null) return !!g.canEdit;
+    return liveCan('edit_group') && (g.visibility === 'public' || g.createdBy === state.userId);
+  }
+  function canDeleteGroup(g) {
+    if (liveOn() && g.canDelete != null) return !!g.canDelete;
+    return liveCan('delete_group') && (g.createdBy === state.userId || liveAllScope());
+  }
+  function livePicker(cur, editable) {
+    var L = window.PM_LIVE;
+    var q = state.centerQ || '';
+    var pc = state.centerCountry || '';
+    var rows = q.trim() ? (L.centerRows || []) : [];
+    var countries = L.countries || [];
+    var list = rows.map(function (c) {
+      var inGroup = !!(cur && cur.members.indexOf(c.id) >= 0);
+      var action = '';
+      if (inGroup) action = '<span class="small muted">已在组内</span>';
+      else if (editable && cur) action = '<button class="btn sm" data-add="' + c.id + '">加入本组</button>';
+      return '<div class="pick"><a href="#/customers/' + c.id + '" style="flex:1;min-width:0;color:inherit;text-decoration:none"><span class="cell-title">' + esc(c.company) + '</span><span class="cell-sub" style="display:block">' + esc(c.code ? c.code + ' · ' : '') + esc(c.country || '未填') + ' · ' + esc(ownerLabel(c)) + '</span></a>' + customerChip(c) + action + '</div>';
+    }).join('');
+    var hint = !q.trim() ? '<div class="empty">输入公司、客户代码、联系人或邮箱。只显示你权限范围内的客户。</div>' : (rows.length ? '' : '<div class="empty">没有符合条件的客户。超出你客户范围的客户不会出现。</div>');
+    var totalHint = q.trim() && L.centerTotal > rows.length ? '<p class="hint" style="padding:0 14px 12px">共 ' + L.centerTotal + ' 个，这里显示前 ' + rows.length + ' 个。</p>' : '';
+    return '<div class="card picker"><div class="card-head"><h2>搜索客户中心</h2></div><div class="toolbar"><input class="input" data-cq placeholder="搜索客户中心（公司、代码、联系人、邮箱）" value="' + esc(q) + '"><select class="select" data-cc><option value="">全部国家</option>' + countries.map(function (v) { return '<option value="' + esc(v.value) + '"' + (v.value === pc ? ' selected' : '') + '>' + esc(v.label) + '</option>'; }).join('') + '</select></div><div class="picker-list">' + (list || hint) + '</div>' + totalHint + '</div>';
+  }
+  function pageCustomers(arg) {
+    if (arg) return pageCustomer(+arg);
+    crumbs(['推广中心', '客户']);
+    var L = window.PM_LIVE || {};
+    var rows = L.listRows || [];
+    var q = state.customerQ || '';
+    var country = state.customerCountry || '';
+    var countries = L.countries || [];
+    return '<div class="page-head"><div><h1>客户</h1><p>只显示你在客户中心权限范围内的客户。这里只读，不修改客户资料，也不发送邮件。</p></div></div>' +
+      '<div class="card"><div class="toolbar"><input class="input" style="max-width:320px" data-custq placeholder="搜索公司、代码、联系人、邮箱" value="' + esc(q) + '"><select class="select" style="width:160px" data-custc><option value="">全部国家</option>' + countries.map(function (v) { return '<option value="' + esc(v.value) + '"' + (v.value === country ? ' selected' : '') + '>' + esc(v.label) + '</option>'; }).join('') + '</select><div class="spacer"></div><span class="small muted num">' + (L.listTotal || 0) + ' 个</span></div>' +
+      '<div class="table-wrap"><table><thead><tr><th>客户</th><th>国家</th><th>负责人</th><th>推广状态</th></tr></thead><tbody>' +
+      (rows.length ? rows.map(function (c) {
+        return '<tr class="click" data-go="#/customers/' + c.id + '"><td><div class="cell-title">' + esc(c.company) + '</div><div class="cell-sub num">' + esc(c.code) + ' · ' + esc(c.contact || '无联系人') + ' · ' + esc(c.email || '无邮箱') + '</div></td><td>' + esc(c.country) + '</td><td>' + esc(ownerLabel(c)) + '</td><td>' + customerChip(c) + '</td></tr>';
+      }).join('') : '<tr><td colspan="4"><div class="empty">' + (q || country ? '没有符合条件的客户。超出范围的客户不会出现。' : '你的范围内还没有客户。') + '</div></td></tr>') +
+      '</tbody></table></div></div>';
+  }
+  function pageCustomer(id) {
+    var c = customer(id);
+    crumbs(['推广中心', '客户', c ? c.company : '详情']);
+    if (!c) return '<div class="page-head"><div><h1>客户</h1></div><div class="actions"><a class="btn" href="#/customers">返回列表</a></div></div><div class="card"><div class="empty">这个客户不存在，或不在你的客户范围内。</div></div>';
+    var contacts = (c.contacts || []).map(function (p) {
+      return '<tr><td>' + esc(p.name || '—') + (p.is_left ? ' <span class="chip">已离职</span>' : '') + (p.is_primary ? ' <span class="chip info">主联系人</span>' : '') + '</td><td class="small">' + esc((p.emails || []).join('、') || '无邮箱') + '</td><td>' + (p.unsubscribe_email ? '<span class="chip warn">已退订</span>' : '—') + '</td><td class="small">' + esc([p.wechat, p.whatsapp].filter(Boolean).join(' · ') || '—') + '</td></tr>';
+    }).join('');
+    var chats = (c.chatGroups || []).map(function (g) { return '<span class="gtag">' + esc(g.name || '') + (g.platform_label ? ' · ' + esc(g.platform_label) : '') + '</span>'; }).join(' ') || '<span class="muted small">—</span>';
+    return '<div class="page-head"><div><h1>' + esc(c.company) + '</h1><p class="num">' + esc(c.code) + (c.country ? ' · ' + esc(c.country) : '') + '</p></div><div class="actions"><a class="btn" href="#/customers">返回列表</a><a class="btn" href="#/groups">去分组</a></div></div>' +
+      '<div class="grid g-2"><div class="card"><div class="card-head"><h2>资料</h2>' + customerChip(c) + '</div><div class="card-body"><dl class="kv"><dt>负责人</dt><dd>' + esc(ownerLabel(c)) + '</dd><dt>推广状态</dt><dd>' + esc(c.promotionLabel || '—') + '</dd>' + (c.noPromotionReason ? '<dt>不推广原因</dt><dd>' + esc(c.noPromotionReason) + '</dd>' : '') + '<dt>公司邮箱</dt><dd>' + esc((c.companyEmails || []).join('、') || '—') + '</dd><dt>渠道</dt><dd>' + esc((c.channelLabels || []).join('、') || '—') + '</dd><dt>可推广群</dt><dd>' + chats + '</dd></dl></div></div>' +
+      '<div class="card"><div class="card-head"><h2>联系人</h2></div>' + (contacts ? '<div class="table-wrap"><table><thead><tr><th>姓名</th><th>邮箱</th><th>退订</th><th>即时通讯</th></tr></thead><tbody>' + contacts + '</tbody></table></div>' : '<div class="empty">没有联系人</div>') + '</div></div>';
+  }
   function pageGroups(arg) {
     crumbs(['推广中心', '客户分组']);
     var groups = visibleGroups();
@@ -364,8 +453,11 @@
     var cur = group(+arg);
     if (!cur || groups.indexOf(cur) < 0) cur = groups[0];
     state.groupId = cur ? cur.id : null;
-    var head = '<div class="page-head"><div><h1>客户分组</h1><p>一个客户可以同时在多个分组里。删除分组或移出客户不会删除客户资料；已提交的推广使用提交时冻结的名单，不受分组变动影响。</p></div><div class="actions">' + (can('create_group') ? '<button class="btn primary" data-g="create">新建分组</button>' : '') + '</div></div>';
-    if (!cur) return head + '<div class="card"><div class="empty">还没有分组。' + (can('create_group') ? '点击“新建分组”开始。' : '') + '</div></div>';
+    var head = '<div class="page-head"><div><h1>客户分组</h1><p>' + (liveOn() ? '客户来自客户中心，只显示你权限范围内的客户。分组保存在本模块，删除分组或移出客户不会删除客户资料，也不会发信。' : '一个客户可以同时在多个分组里。删除分组或移出客户不会删除客户资料；已提交的推广使用提交时冻结的名单，不受分组变动影响。') + '</p></div><div class="actions">' + (liveCan('create_group') ? '<button class="btn primary" data-g="create">新建分组</button>' : '') + '</div></div>';
+    if (!cur) {
+      var emptySearch = liveOn() ? livePicker(null, false) : '';
+      return head + '<div class="groups' + (emptySearch ? ' with-picker' : '') + '"><div class="card"><div class="empty">还没有分组。' + (liveCan('create_group') ? '点击“新建分组”开始。' : '') + '</div></div>' + emptySearch + '</div>';
+    }
 
     var members = visibleMembers(cur);
     var mq = (state.memberQ || '').toLowerCase();
@@ -378,25 +470,37 @@
 
     var left = '<div class="card groups-list"><div class="toolbar"><input class="input" data-gq placeholder="搜索分组" value="' + esc(state.groupQ || '') + '"></div>' +
       listed.map(function (g) {
-        return '<div class="list-item' + (g === cur ? ' on' : '') + '" data-go="#/groups/' + g.id + '"><div style="display:flex;align-items:center;gap:8px"><span class="dot" style="background:' + g.color + '"></span><span class="cell-title" style="flex:1">' + esc(g.name) + '</span><span class="num small muted">' + visibleMembers(g).length + '</span></div><div class="cell-sub">' + (g.visibility === 'private' ? '仅自己可见' : '团队共用') + ' · ' + user(g.createdBy).name + ' 创建</div></div>';
+        return '<div class="list-item' + (g === cur ? ' on' : '') + '" data-go="#/groups/' + g.id + '"><div style="display:flex;align-items:center;gap:8px"><span class="dot" style="background:' + g.color + '"></span><span class="cell-title" style="flex:1">' + esc(g.name) + '</span><span class="num small muted">' + groupCount(g) + '</span></div><div class="cell-sub">' + (g.visibility === 'private' ? '仅自己可见' : '团队共用') + ' · ' + esc(creatorName(g)) + ' 创建</div></div>';
       }).join('') + (listed.length ? '' : '<div class="empty">没有匹配的分组</div>') + '</div>';
 
+    var canMove = liveOn() ? !!cur.canMove : liveCan('move_customer');
     var bulk = selCount ? '<div class="bulk-bar"><b class="num">已选 ' + selCount + ' 个</b>' +
-      (can('move_customer') ? '<button class="btn sm" data-g="move">移到其他分组</button><button class="btn sm" data-g="copy">复制到其他分组</button>' : '') +
+      (canMove ? '<button class="btn sm" data-g="move">移到其他分组</button><button class="btn sm" data-g="copy">复制到其他分组</button>' : '') +
       (editable ? '<button class="btn sm danger" data-g="remove-sel">从本组移出</button>' : '') + '<button class="btn sm ghost" data-g="clear">取消选择</button></div>' : '';
 
-    var middle = '<div class="card groups-main"><div class="card-head"><div><h2 style="display:flex;align-items:center;gap:8px"><span class="dot" style="background:' + cur.color + '"></span>' + esc(cur.name) + '</h2><div class="cell-sub">' + (cur.visibility === 'private' ? '仅自己可见' : '团队共用') + ' · ' + user(cur.createdBy).name + ' 创建 · ' + (allScope() ? '共 ' + cur.members.length + ' 个客户' : '你负责的 ' + members.length + ' 个（分组共 ' + cur.members.length + ' 个）') + '</div></div><div class="actions">' +
+    var totalN = liveOn() && cur.memberTotal != null ? cur.memberTotal : cur.members.length;
+    var visibleN = liveOn() && cur.visibleCount != null ? cur.visibleCount : members.length;
+    var countText = liveAllScope() ? '共 ' + totalN + ' 个客户' : '你可见的 ' + visibleN + ' 个（分组共 ' + totalN + ' 个）';
+    var middle = '<div class="card groups-main"><div class="card-head"><div><h2 style="display:flex;align-items:center;gap:8px"><span class="dot" style="background:' + cur.color + '"></span>' + esc(cur.name) + '</h2><div class="cell-sub">' + (cur.visibility === 'private' ? '仅自己可见' : '团队共用') + ' · ' + esc(creatorName(cur)) + ' 创建 · ' + countText + '</div></div><div class="actions">' +
       (canDeleteGroup(cur) ? '<button class="btn sm danger" data-g="delete">删除分组</button>' : '') +
       (editable ? '<button class="btn sm" data-g="rename">重命名</button><button class="btn sm primary" data-g="add">添加客户</button>' : '') + '</div></div>' +
       '<div class="toolbar"><input class="input" style="max-width:260px" data-mq placeholder="搜索公司、联系人、邮箱" value="' + esc(state.memberQ || '') + '"><select class="select" style="width:140px" data-mc><option value="">全部国家</option>' + countries.map(function (v) { return '<option' + (v === country ? ' selected' : '') + '>' + esc(v) + '</option>'; }).join('') + '</select><div class="spacer"></div><span class="small muted num">显示 ' + shown.length + ' 个</span></div>' + bulk +
       '<div class="table-wrap"><table class="members"><thead><tr><th style="width:36px"><input type="checkbox" data-selall' + (shown.length && selCount === shown.length ? ' checked' : '') + ' aria-label="全选"></th><th>客户</th><th>国家</th><th class="col-wide">等级</th><th>负责人</th><th>推广状态</th><th class="col-wide">其他分组</th><th></th></tr></thead><tbody>' +
       (shown.length ? shown.map(function (c) {
-        var others = visibleGroups().filter(function (g) { return g !== cur && g.members.indexOf(c.id) >= 0; });
-        return '<tr' + (sel[c.id] ? ' class="selected"' : '') + '><td><input type="checkbox" data-sel="' + c.id + '"' + (sel[c.id] ? ' checked' : '') + ' aria-label="选择 ' + esc(c.company) + '"></td><td><div class="cell-title">' + esc(c.company) + '</div><div class="cell-sub">' + esc(c.contact || '（无联系人姓名）') + ' · ' + esc(c.email || '无邮箱') + '</div></td><td>' + esc(c.country) + '</td><td class="col-wide">' + c.level + '</td><td>' + user(c.owner).name + '</td><td>' + customerChip(c) + '</td><td class="col-wide">' + (others.length ? others.map(function (g) { return '<span class="gtag"><span class="dot" style="background:' + g.color + '"></span>' + esc(g.name) + '</span>'; }).join('') : '<span class="muted small">—</span>') + '</td><td style="text-align:right">' + (editable ? '<button class="btn sm ghost" data-rm="' + c.id + '">移出</button>' : '') + '</td></tr>';
-      }).join('') : '<tr><td colspan="8"><div class="empty">' + (members.length ? '没有符合筛选条件的客户' : (cur.members.length ? '分组里有 ' + cur.members.length + ' 个客户，但没有你负责的。' : '这个分组还没有客户。') + (editable ? '点击“添加客户”。' : '')) + '</div></td></tr>') + '</tbody></table></div></div>';
+        var othersHtml;
+        if (liveOn() && c.otherGroups) {
+          othersHtml = c.otherGroups.length ? c.otherGroups.map(function (og) { return '<span class="gtag"><span class="dot" style="background:' + esc(og.color || '#3b4fd8') + '"></span>' + esc(og.name) + '</span>'; }).join('') : '<span class="muted small">—</span>';
+        } else {
+          var others = visibleGroups().filter(function (g) { return g !== cur && g.members.indexOf(c.id) >= 0; });
+          othersHtml = others.length ? others.map(function (g) { return '<span class="gtag"><span class="dot" style="background:' + g.color + '"></span>' + esc(g.name) + '</span>'; }).join('') : '<span class="muted small">—</span>';
+        }
+        var company = liveOn() ? '<a href="#/customers/' + c.id + '">' + esc(c.company) + '</a>' : esc(c.company);
+        return '<tr' + (sel[c.id] ? ' class="selected"' : '') + '><td><input type="checkbox" data-sel="' + c.id + '"' + (sel[c.id] ? ' checked' : '') + ' aria-label="选择 ' + esc(c.company) + '"></td><td><div class="cell-title">' + company + '</div><div class="cell-sub">' + esc(c.contact || '（无联系人姓名）') + ' · ' + esc(c.email || '无邮箱') + '</div></td><td>' + esc(c.country) + '</td><td class="col-wide">' + esc(c.level || '—') + '</td><td>' + esc(ownerLabel(c)) + '</td><td>' + customerChip(c) + '</td><td class="col-wide">' + othersHtml + '</td><td style="text-align:right">' + (editable ? '<button class="btn sm ghost" data-rm="' + c.id + '">移出</button>' : '') + '</td></tr>';
+      }).join('') : '<tr><td colspan="8"><div class="empty">' + (members.length ? '没有符合筛选条件的客户' : ((liveOn() ? (cur.memberTotal || 0) : cur.members.length) ? '分组里有 ' + (liveOn() ? cur.memberTotal : cur.members.length) + ' 个客户，但没有你可见的。' : '这个分组还没有客户。') + (editable ? (liveOn() ? '在右侧搜索客户中心并加入。' : '点击“添加客户”。') : '')) + '</div></td></tr>') + '</tbody></table></div></div>';
 
     var picker = '';
-    if (state.pickerOpen && editable) {
+    if (liveOn()) picker = livePicker(cur, editable);
+    else if (state.pickerOpen && editable) {
       var pq = (state.pickQ || '').toLowerCase(), pc = state.pickCountry || '';
       var pool = D.customers.filter(visibleCustomer).filter(function (c) { return (!pq || (c.company + ' ' + c.contact + ' ' + c.email).toLowerCase().indexOf(pq) >= 0) && (!pc || c.country === pc); });
       var pick = state.pickSel || {};
@@ -413,11 +517,19 @@
   }
   function groupPickModal(title, cur, onPick) {
     var targets = visibleGroups().filter(function (g) { return g !== cur && canEditGroup(g); });
-    modal({ title: title, ok: '确定', body: (targets.length ? '<div class="check-list">' + targets.map(function (g) { return '<label><input type="radio" name="tg" value="' + g.id + '"><span class="dot" style="background:' + g.color + '"></span><span style="flex:1">' + esc(g.name) + '</span><span class="small muted num">' + visibleMembers(g).length + '</span></label>'; }).join('') + '</div>' : '<p class="muted">没有可以写入的其他分组，请先新建分组。</p>') + '<p class="form-error small hidden" style="color:var(--bad)"></p>',
+    modal({ title: title, ok: '确定', body: (targets.length ? '<div class="check-list">' + targets.map(function (g) { return '<label><input type="radio" name="tg" value="' + g.id + '"><span class="dot" style="background:' + g.color + '"></span><span style="flex:1">' + esc(g.name) + '</span><span class="small muted num">' + groupCount(g) + '</span></label>'; }).join('') + '</div>' : '<p class="muted">没有可以写入的其他分组，请先新建分组。</p>') + '<p class="form-error small hidden" style="color:var(--bad)"></p>',
       onOk: function (w) { var r = $('input[name=tg]:checked', w); if (!r) return '请选择目标分组'; onPick(group(+r.value)); } });
   }
   function bindGroups() {
     var cur = group(state.groupId);
+    function refreshLive(groupId) {
+      return window.PM_LIVE.prepare('groups', groupId || '').then(function () { route(); });
+    }
+    function toastUndo(msg, token, groupId) {
+      toast(msg, token ? function () {
+        window.PM_LIVE.undo(token).then(function () { return refreshLive(groupId || (cur && cur.id)); }).then(function () { toast('已撤销'); }).catch(function (err) { toast(err.message || '撤销失败'); });
+      } : null);
+    }
     function sel() { return Object.keys(state.memberSel || {}).filter(function (k) { return state.memberSel[k]; }).map(Number); }
     function snapshot() { return D.groups.map(function (g) { return { g: g, members: g.members.slice(), deleted: g.deleted, name: g.name }; }); }
     function restore(snap) { snap.forEach(function (s) { s.g.members = s.members; s.g.deleted = s.deleted; s.g.name = s.name; }); }
@@ -427,6 +539,20 @@
     on('[data-gq]', 'input', function (el) { state.groupQ = el.value; keepFocus('[data-gq]', el); });
     on('[data-mq]', 'input', function (el) { state.memberQ = el.value; keepFocus('[data-mq]', el); });
     on('[data-pq]', 'input', function (el) { state.pickQ = el.value; keepFocus('[data-pq]', el); });
+    on('[data-cq]', 'input', function (el) {
+      state.centerQ = el.value;
+      window.PM_LIVE.schedule(function () {
+        window.PM_LIVE.searchCenter().then(function () {
+          route();
+          var n = $('[data-cq]');
+          if (n) { n.focus(); n.setSelectionRange(el.value.length, el.value.length); }
+        }).catch(function (err) { toast(err.message || '搜索失败'); });
+      });
+    });
+    on('[data-cc]', 'change', function (el) {
+      state.centerCountry = el.value;
+      window.PM_LIVE.searchCenter().then(function () { route(); }).catch(function (err) { toast(err.message || '筛选失败'); });
+    });
     on('[data-mc]', 'change', function (el) { state.memberCountry = el.value; route(); });
     on('[data-pc]', 'change', function (el) { state.pickCountry = el.value; route(); });
     on('[data-sel]', 'change', function (el) { state.memberSel = state.memberSel || {}; state.memberSel[el.getAttribute('data-sel')] = el.checked; route(); });
@@ -437,9 +563,23 @@
     });
     on('[data-pick]', 'change', function (el) { state.pickSel = state.pickSel || {}; state.pickSel[el.getAttribute('data-pick')] = el.checked; route(); });
     on('[data-rm]', 'click', function (el) {
-      var id = +el.getAttribute('data-rm'), snap = snapshot(), c = customer(id);
+      var id = +el.getAttribute('data-rm'), c = customer(id);
+      if (liveOn()) {
+        window.PM_LIVE.removeMembers(cur.id, [id]).then(function (data) {
+          return refreshLive(cur.id).then(function () { toastUndo('已将 ' + (c ? c.company : '客户') + ' 移出「' + cur.name + '」', data.undo_token, cur.id); });
+        }).catch(function (err) { toast(err.message || '移出失败'); });
+        return;
+      }
+      var snap = snapshot();
       cur.members = cur.members.filter(function (x) { return x !== id; });
       route(); undoable('已将 ' + c.company + ' 移出「' + cur.name + '」', snap);
+    });
+    on('[data-add]', 'click', function (el) {
+      if (!cur) return;
+      var id = +el.getAttribute('data-add');
+      window.PM_LIVE.addMembers(cur.id, [id]).then(function (data) {
+        return refreshLive(cur.id).then(function () { toastUndo('已加入「' + cur.name + '」', data.undo_token, cur.id); });
+      }).catch(function (err) { toast(err.message || '加入失败'); });
     });
     var acts = {
       create: function () {
@@ -447,21 +587,56 @@
           onOk: function (w) {
             var name = $('[data-n]', w).value.trim();
             if (!name) return '请填写分组名称';
+            var vis = $('input[name=vis]:checked', w).value;
+            if (liveOn()) {
+              window.PM_LIVE.createGroup(name, vis).then(function (data) {
+                location.hash = '#/groups/' + data.id;
+                return refreshLive(data.id).then(function () { toastUndo('分组已创建，现在可以在右侧搜索并加入客户', data.undo_token, data.id); });
+              }).catch(function (err) { toast(err.message || '创建失败'); });
+              return;
+            }
             if (visibleGroups().some(function (g) { return g.name === name; })) return '已有同名分组';
-            var g = { id: 30 + D.groups.length, name: name, color: ['#3b4fd8', '#19794b', '#a35c00', '#b3261e', '#6b4fd8'][D.groups.length % 5], visibility: $('input[name=vis]:checked', w).value, createdBy: state.userId, members: [] };
+            var g = { id: 30 + D.groups.length, name: name, color: ['#3b4fd8', '#19794b', '#a35c00', '#b3261e', '#6b4fd8'][D.groups.length % 5], visibility: vis, createdBy: state.userId, members: [] };
             D.groups.push(g); state.pickerOpen = true; state.pickSel = {}; location.hash = '#/groups/' + g.id; toast('分组已创建，现在可以添加客户');
           } });
       },
       rename: function () {
+        if (!cur) return;
         modal({ title: '重命名分组', ok: '保存', body: '<div class="field"><label>分组名称</label><input class="input" data-n value="' + esc(cur.name) + '"></div><p class="form-error small hidden" style="color:var(--bad)"></p>',
-          onOk: function (w) { var name = $('[data-n]', w).value.trim(); if (!name) return '请填写分组名称'; if (visibleGroups().some(function (g) { return g !== cur && g.name === name; })) return '已有同名分组'; cur.name = name; route(); toast('已重命名'); } });
+          onOk: function (w) {
+            var name = $('[data-n]', w).value.trim();
+            if (!name) return '请填写分组名称';
+            if (liveOn()) {
+              window.PM_LIVE.renameGroup(cur.id, name).then(function (data) {
+                return refreshLive(cur.id).then(function () { toastUndo('已重命名', data.undo_token, cur.id); });
+              }).catch(function (err) { toast(err.message || '重命名失败'); });
+              return;
+            }
+            if (visibleGroups().some(function (g) { return g !== cur && g.name === name; })) return '已有同名分组';
+            cur.name = name; route(); toast('已重命名');
+          } });
       },
       delete: function () {
-        var using = D.campaigns.filter(function (c) { return c.source === 'pm' && ['draft', 'rejected'].indexOf(c.status) >= 0; }).length;
-        modal({ title: '删除分组「' + cur.name + '」', ok: '删除分组', danger: true, body: '<p>分组里的 <b class="num">' + cur.members.length + '</b> 个客户不会被删除，只是不再属于这个分组。</p><p class="small muted">已提交的推广使用冻结名单，不受影响；还在编辑的 ' + using + ' 个草稿如果选了这个分组，需要重新选择。删除后 10 秒内可以撤销。</p>',
-          onOk: function () { var snap = snapshot(), id = cur.id; cur.deleted = true; location.hash = '#/groups'; undoable('分组已删除', snap, function () { location.hash = '#/groups/' + id; }); } });
+        if (!cur) return;
+        var totalShown = liveOn() && cur.memberTotal != null ? cur.memberTotal : cur.members.length;
+        var using = liveOn() ? 0 : D.campaigns.filter(function (c) { return c.source === 'pm' && ['draft', 'rejected'].indexOf(c.status) >= 0; }).length;
+        modal({ title: '删除分组「' + cur.name + '」', ok: '删除分组', danger: true, body: '<p>分组里的 <b class="num">' + totalShown + '</b> 个客户不会被删除，只是不再属于这个分组。</p><p class="small muted">' + (liveOn() ? '不会发送邮件。' : '已提交的推广使用冻结名单，不受影响；还在编辑的 ' + using + ' 个草稿如果选了这个分组，需要重新选择。') + '删除后 10 秒内可以撤销。</p>',
+          onOk: function () {
+            if (liveOn()) {
+              var id = cur.id;
+              window.PM_LIVE.deleteGroup(id).then(function (data) {
+                location.hash = '#/groups';
+                return refreshLive('').then(function () { toastUndo('分组已删除', data.undo_token, id); });
+              }).catch(function (err) { toast(err.message || '删除失败'); });
+              return;
+            }
+            var snap = snapshot(), id = cur.id; cur.deleted = true; location.hash = '#/groups'; undoable('分组已删除', snap, function () { location.hash = '#/groups/' + id; });
+          } });
       },
-      add: function () { state.pickerOpen = true; state.pickSel = {}; route(); },
+      add: function () {
+        if (liveOn()) { var n = $('[data-cq]'); if (n) n.focus(); return; }
+        state.pickerOpen = true; state.pickSel = {}; route();
+      },
       'close-picker': function () { state.pickerOpen = false; route(); },
       'pick-all': function () { state.pickSel = state.pickSel || {}; $all('[data-pick]:not([disabled])').forEach(function (x) { state.pickSel[x.getAttribute('data-pick')] = true; }); route(); },
       'add-confirm': function () {
@@ -471,7 +646,15 @@
       },
       clear: function () { state.memberSel = {}; route(); },
       'remove-sel': function () {
-        var ids = sel(), snap = snapshot();
+        var ids = sel();
+        if (liveOn()) {
+          window.PM_LIVE.removeMembers(cur.id, ids).then(function (data) {
+            state.memberSel = {};
+            return refreshLive(cur.id).then(function () { toastUndo('已将 ' + ids.length + ' 个客户移出「' + cur.name + '」', data.undo_token, cur.id); });
+          }).catch(function (err) { toast(err.message || '移出失败'); });
+          return;
+        }
+        var snap = snapshot();
         cur.members = cur.members.filter(function (x) { return ids.indexOf(x) < 0; });
         state.memberSel = {}; route(); undoable('已将 ' + ids.length + ' 个客户移出「' + cur.name + '」', snap);
       },
@@ -481,6 +664,14 @@
     function transfer(isMove) {
       var ids = sel();
       groupPickModal((isMove ? '移动 ' : '复制 ') + ids.length + ' 个客户到', cur, function (target) {
+        if (liveOn()) {
+          var job = isMove ? window.PM_LIVE.moveMembers(cur.id, target.id, ids) : window.PM_LIVE.copyMembers(cur.id, target.id, ids);
+          job.then(function (data) {
+            state.memberSel = {};
+            return refreshLive(cur.id).then(function () { toastUndo((isMove ? '已移动 ' : '已复制 ') + ids.length + ' 个客户到「' + target.name + '」', data.undo_token, cur.id); });
+          }).catch(function (err) { toast(err.message || '操作失败'); });
+          return;
+        }
         var snap = snapshot(), already = 0;
         ids.forEach(function (id) { if (target.members.indexOf(id) >= 0) already++; else target.members.push(id); });
         if (isMove) cur.members = cur.members.filter(function (x) { return ids.indexOf(x) < 0; });
@@ -507,10 +698,29 @@
       '<tr><td>联系人邮件退订（CRM 联系人）</td><td class="num" style="text-align:right">' + x.contactUnsub + '</td></tr><tr><td>CRM 客户禁联</td><td class="num" style="text-align:right">' + x.crmDnc + '</td></tr><tr><td>旧推广中心退订</td><td class="num" style="text-align:right">' + x.legacyUnsub + '</td></tr><tr><td>旧推广中心黑名单</td><td class="num" style="text-align:right">' + x.legacyBlack + '</td></tr></tbody></table></div></div></div></div>';
   }
 
+  function bindCustomers() {
+    $all('[data-custq]').forEach(function (el) {
+      el.addEventListener('input', function () {
+        state.customerQ = el.value;
+        window.PM_LIVE.schedule(function () {
+          window.PM_LIVE.searchList().then(function () {
+            route();
+            var n = $('[data-custq]');
+            if (n) { n.focus(); n.setSelectionRange(n.value.length, n.value.length); }
+          }).catch(function (err) { toast(err.message || '搜索失败'); });
+        });
+      });
+    });
+    $all('[data-custc]').forEach(function (el) {
+      el.addEventListener('change', function () {
+        state.customerCountry = el.value;
+        window.PM_LIVE.searchList().then(function () { route(); }).catch(function (err) { toast(err.message || '筛选失败'); });
+      });
+    });
+  }
+
   /* 路由 */
-  function route() {
-    var parts = (location.hash.replace(/^#\/?/, '') || 'home').split('/');
-    var name = parts[0], arg = parts[1];
+  function paint(name, arg) {
     var view = $('#view'), html;
     if (name === 'new') html = window.PM_WIZARD.page(arg);
     else if (name === 'detail') html = pageDetail(arg);
@@ -519,6 +729,7 @@
     else if (name === 'approvals') html = pageApprovals(arg);
     else if (name === 'tasks') html = pageTasks();
     else if (name === 'groups') html = pageGroups(arg);
+    else if (name === 'customers') html = pageCustomers(arg);
     else if (name === 'settings') html = pageSettings();
     else { name = 'home'; html = pageHome(); }
     renderShell(name);
@@ -532,6 +743,31 @@
     if (name === 'approvals') bindApprovals(arg);
     if (name === 'tasks' || name === 'detail') bindTasks();
     if (name === 'groups') bindGroups();
+    if (name === 'customers') bindCustomers();
+  }
+  function route() {
+    var parts = (location.hash.replace(/^#\/?/, '') || 'home').split('/');
+    var name = parts[0], arg = parts[1] || '';
+    state.useLive = !!(window.PM_LIVE && window.PM_LIVE.ready && (name === 'groups' || name === 'customers'));
+    if (state.useLive && window.PM_LIVE.needs(name, arg)) {
+      renderShell(name);
+      var view = $('#view');
+      if (view) view.innerHTML = '<div class="card"><div class="empty">正在读取客户中心…</div></div>';
+      state._ticket = (state._ticket || 0) + 1;
+      var ticket = state._ticket;
+      window.PM_LIVE.prepare(name, arg).then(function () {
+        if (ticket !== state._ticket) return;
+        var now = (location.hash.replace(/^#\/?/, '') || 'home').split('/');
+        if (now[0] !== name || (now[1] || '') !== arg) return;
+        paint(name, arg);
+      }).catch(function (err) {
+        if (ticket !== state._ticket) return;
+        renderShell(name);
+        if (view) view.innerHTML = '<div class="card"><div class="empty">' + esc(err.message || '读取客户中心失败') + '</div></div>';
+      });
+      return;
+    }
+    paint(name, arg);
   }
   window.PM_APP = { D: D, state: state, $: $, $all: $all, esc: esc, me: me, user: user, mailbox: mailbox, campaign: campaign, can: can, allScope: allScope, canCreate: canCreate, visibleCustomer: visibleCustomer, visibleGroups: visibleGroups, visibleMembers: visibleMembers, group: group, customer: customer, approvalReasons: approvalReasons, crumbs: crumbs, toast: toast, modal: modal, radioCard: radioCard, route: route, CHANNEL: CHANNEL, STATUS: STATUS, chip: chip, visibleCampaigns: visibleCampaigns };
 
@@ -548,11 +784,23 @@
     if (params.get('user')) state.userId = +params.get('user');
     if (params.get('picker')) state.pickerOpen = true;
     if (localStorage.getItem('pm-side') === 'collapsed') document.body.classList.add('side-collapsed');
-    $('#side-toggle').addEventListener('click', function () {
+    var toggle = $('#side-toggle');
+    if (toggle) toggle.addEventListener('click', function () {
       var c = document.body.classList.toggle('side-collapsed');
       localStorage.setItem('pm-side', c ? 'collapsed' : 'open');
     });
-    $('#role-select').addEventListener('change', function (e) { state.userId = +e.target.value; state.draft = null; state.memberSel = {}; state.pickerOpen = false; route(); toast('已切换为 ' + me().name + '（' + me().role + '）'); });
-    route();
+    function start() {
+      var role = $('#role-select');
+      if (role) role.addEventListener('change', function (e) { state.userId = +e.target.value; state.draft = null; state.memberSel = {}; state.pickerOpen = false; route(); toast('已切换为 ' + me().name + '（' + me().role + '）。客户和分组仍按当前登录账号的权限显示。'); });
+      route();
+    }
+    if (window.PM_LIVE && window.PM_LIVE.boot) {
+      window.PM_LIVE.boot().then(start).catch(function (err) {
+        var view = $('#view');
+        if (view) view.innerHTML = '<div class="card"><div class="empty">' + esc(err.message || '无法读取登录状态') + '</div></div>';
+      });
+    } else {
+      start();
+    }
   });
 })();
