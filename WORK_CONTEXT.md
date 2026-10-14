@@ -1,5 +1,15 @@
 # Artdon ERP 工作上下文
 
+## 2026-10-14：分组页只选国家也列出客户
+
+- 本次完成：`#/groups` 右侧「搜索客户中心」在关键词为空、但已选择国家时，列出该国家里当前登录用户可见的客户中心客户。可见范围仍是 `promotion.view` 与 `get_user_scope('customer')` 的交集，没有放宽。只输入关键词时行为与原来相同。关键词和国家同时有时，两个条件一起生效。关键词为空且国家为「全部国家」时不请求客户列表，仍显示空状态。
+- 原因：`customers` 接口本来就接受空关键词加国家条件（`LegacyCustomerAdapter::list` 只在关键词非空时加关键词条件）。原型 `live.js` 在关键词为空时不请求，`app.js` 的搜索面板也在关键词为空时丢掉已经返回的行。
+- 修改文件：`promotion_center_v1/prototype/live.js`、`promotion_center_v1/prototype/app.js`、本文件。未改 `promotion_center_v1/api.php`、`LegacyCustomerAdapter.php`、门户根 `index.php`、现网 `promotion/`、`crm_marketing_*`、`includes/permission.php`。
+- 检查结果：`node --check` 通过 `prototype/app.js`、`live.js`、`data.js`、`wizard.js`、`board.js`。浏览器模拟接口核对空状态、只选国家、只搜关键词、两者同时生效，结果写在后续提交。
+- 服务器部署情况：本环境无法 SSH 正式机，未把本分支检出到 `/www/wwwroot/Artdon/artdon_erp/`。正式目录只在本分支合并进 `main` 后由 GitHub Actions 快进。三方 HEAD 一致留到那次快进之后。
+- Git 提交号及推送状态：见本分支提交。正式目录未快进。
+- 尚未完成：合并后用正式账号打开 `prototype/#/groups`，只选国家应出现该国范围内客户，另一位业务员的客户仍不出现。执行看板待确认项仍是 `EXECUTION_BOARD.md` 第 7 节。
+
 ## 2026-10-14：原型入口读取真实客户中心
 
 - 本次完成：门户仍进 `promotion_center_v1/prototype/`。登录且具备 `promotion.view` 后，原型里的客户列表、客户详情、`#/groups` 搜索加客户改为读取客户中心。范围是 `get_user_scope('customer')` 与客户中心规则的交集，不放大。分组读写本模块 `pm_*` 表（新建、重命名、软删、加入、移出、移动、复制、约 10 秒撤销）。未登录打开原型会转到登录页；未登录调用 `api.php` 返回 JSON `AUTH_REQUIRED`。推广列表、执行看板、新建向导仍用演示数据，向导第 2 步标明不会读客户中心、也不会发信。不建 `crm_mail_send_jobs`。
