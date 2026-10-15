@@ -148,7 +148,7 @@ final class ProfileService
         if (!Password::verify($old, $hash)) {
             $v->fail('old_password', '当前密码不正确');
         } elseif (!Password::isStrong($new)) {
-            $v->fail('new_password', Password::RULE);
+            $v->fail('new_password', Password::rule());
         } elseif ($new === $old) {
             $v->fail('new_password', '新密码不能与当前密码相同');
         } elseif ($new !== $confirm) {

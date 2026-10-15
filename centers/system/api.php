@@ -12,6 +12,7 @@ use Artdon\Centers\System\DepartmentService;
 use Artdon\Centers\System\PeopleService;
 use Artdon\Centers\System\RequestService;
 use Artdon\Centers\System\RoleService;
+use Artdon\Centers\System\SettingsService;
 
 $accounts = static function (array $user): AccountService {
     return new AccountService($user);
@@ -168,5 +169,25 @@ Api::run([
         (new RequestService($user))->extend($id($input), $input);
         Flash::set('success', '临时授权已延长。');
         return ['message' => '已延长'];
+    }],
+    'settings_company_save' => ['method' => 'POST', 'handler' => static function (array $input, array $user): array {
+        (new SettingsService($user))->saveCompany($input);
+        Flash::set('success', '公司信息已保存。');
+        return ['message' => '已保存'];
+    }],
+    'settings_logo_save' => ['method' => 'POST', 'handler' => static function (array $input, array $user): array {
+        (new SettingsService($user))->saveLogo(is_string($input['logo'] ?? null) ? $input['logo'] : '');
+        Flash::set('success', 'Logo 已更新。');
+        return ['message' => '已更新'];
+    }],
+    'settings_logo_remove' => ['method' => 'POST', 'handler' => static function (array $input, array $user): array {
+        (new SettingsService($user))->removeLogo();
+        Flash::set('success', '已去掉 Logo，改用默认字母。');
+        return ['message' => '已去掉'];
+    }],
+    'settings_security_save' => ['method' => 'POST', 'handler' => static function (array $input, array $user): array {
+        (new SettingsService($user))->saveSecurity($input);
+        Flash::set('success', '安全设置已保存，马上生效。');
+        return ['message' => '已保存'];
     }],
 ]);

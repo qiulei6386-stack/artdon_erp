@@ -123,7 +123,7 @@ Layout::start([
         <input type="text" name="username" value="<?= Layout::e((string) ($profile['username'] ?? '')) ?>" autocomplete="username" class="sr-only" tabindex="-1" aria-hidden="true">
         <div class="card-body form-grid">
           <div class="span-2"><?= Form::input('old_password', '当前密码', '', $passwordErrors, ['type' => 'password', 'required' => true, 'autocomplete' => 'current-password']) ?></div>
-          <?= Form::input('new_password', '新密码', '', $passwordErrors, ['type' => 'password', 'required' => true, 'autocomplete' => 'new-password', 'minlength' => 8, 'hint' => Password::RULE]) ?>
+          <?= Form::input('new_password', '新密码', '', $passwordErrors, ['type' => 'password', 'required' => true, 'autocomplete' => 'new-password', 'minlength' => Password::minLength(), 'hint' => Password::rule()]) ?>
           <?= Form::input('confirm_password', '确认新密码', '', $passwordErrors, ['type' => 'password', 'required' => true, 'autocomplete' => 'new-password', 'minlength' => 8]) ?>
         </div>
         <div class="card-foot"><span class="muted" style="margin-right:auto">修改后需要用新密码重新登录</span><button type="submit" class="btn btn-primary">修改密码</button></div>
