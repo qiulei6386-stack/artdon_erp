@@ -140,7 +140,7 @@ final class AccountService
             $password = self::generatePassword();
             $generated = true;
         } elseif (!Password::isStrong($password)) {
-            $v->fail('password', Password::RULE);
+            $v->fail('password', Password::rule());
         }
         $v->check();
 
@@ -293,7 +293,7 @@ final class AccountService
             $password = self::generatePassword();
             $generated = true;
         } elseif (!Password::isStrong($password)) {
-            $v->fail('new_password', Password::RULE);
+            $v->fail('new_password', Password::rule());
         }
         $v->check();
         $this->pdo->prepare('UPDATE crm_users SET password_hash = ?, force_password_change = 1, failed_login_count = 0, locked_until = NULL, updated_at = ? WHERE id = ?')
@@ -302,14 +302,15 @@ final class AccountService
         return ['password' => $password, 'generated' => $generated];
     }
 
-    /** 生成 10 位密码：去掉容易看混的字符，保证同时有字母和数字。 */
+    /** 生成密码（10 位，或安全设置要求的更长位数）：去掉容易看混的字符，保证同时有字母和数字。 */
     public static function generatePassword(): string
     {
         $letters = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ';
         $digits = '23456789';
         $all = $letters . $digits;
         $chars = [$letters[random_int(0, strlen($letters) - 1)], $digits[random_int(0, strlen($digits) - 1)]];
-        while (count($chars) < 10) {
+        $length = max(10, Password::minLength());
+        while (count($chars) < $length) {
             $chars[] = $all[random_int(0, strlen($all) - 1)];
         }
         for ($i = count($chars) - 1; $i > 0; $i--) {

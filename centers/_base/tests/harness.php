@@ -95,6 +95,7 @@ function centers_test_reset(): PDO
     $pdo->exec("INSERT INTO crm_roles (id, role_key, role_name, status) VALUES (1, 'super_admin', '超级管理员', 'active'), (2, 'sales', '业务员', 'active')");
     \Artdon\Centers\Base\Db::set($pdo);
     \Artdon\Centers\Base\Permission::clearCache();
+    \Artdon\Centers\Base\SystemSettings::clearCache();
     \Artdon\Centers\Base\Auth::refresh();
     $_SESSION = [];
     return $pdo;

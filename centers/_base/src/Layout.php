@@ -17,26 +17,20 @@ final class Layout
         return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
     }
 
-    /** 系统名称：读 crm_system_settings 里的 system_name，读不到时用默认名。 */
+    /** 系统名称：设置中心里的 system_name。 */
     public static function systemName(): string
     {
-        static $name = null;
-        if ($name === null) {
-            $name = '';
-            try {
-                if (Config::exists() && Db::tableExists('crm_system_settings')) {
-                    $stmt = Db::pdo()->prepare("SELECT setting_value FROM crm_system_settings WHERE setting_key = 'system_name' LIMIT 1");
-                    $stmt->execute();
-                    $name = trim((string) $stmt->fetchColumn());
-                }
-            } catch (\Throwable $e) {
-                $name = '';
-            }
-            if ($name === '') {
-                $name = 'Artdon 业务系统';
-            }
+        return SystemSettings::systemName();
+    }
+
+    /** 品牌标识：有 Logo 用 Logo，没有用字母 A。 */
+    private static function brandMark(bool $large = false): string
+    {
+        $logo = SystemSettings::logo();
+        if ($logo !== '') {
+            return '<img class="brand-logo' . ($large ? ' brand-logo-lg' : '') . '" src="' . self::e($logo) . '" alt="">';
         }
-        return $name;
+        return '<span class="side-mark' . ($large ? ' side-mark-lg' : '') . '" aria-hidden="true">A</span>';
     }
 
     /** 首页：目前是个人账号，以后有工作台后改这里。 */
@@ -61,7 +55,7 @@ final class Layout
         self::head($title, 'app');
         echo '<div class="app">';
         echo '<aside class="side" id="side" aria-label="导航">';
-        echo '<a class="side-brand" href="' . self::e(self::homeUrl()) . '"><span class="side-mark" aria-hidden="true">A</span><span class="side-brand-text"><strong>ARTDON</strong><small>' . self::e(self::systemName()) . '</small></span></a>';
+        echo '<a class="side-brand" href="' . self::e(self::homeUrl()) . '">' . self::brandMark() . '<span class="side-brand-text"><strong>ARTDON</strong><small>' . self::e(self::systemName()) . '</small></span></a>';
         foreach ($groups as $group) {
             if ($group['title'] !== '') {
                 echo '<div class="side-title">' . self::e($group['title']) . '</div>';
@@ -127,7 +121,7 @@ final class Layout
     {
         self::head($title, 'auth');
         echo '<div class="auth">';
-        echo '<section class="auth-brand"><div class="auth-brand-inner"><span class="side-mark side-mark-lg" aria-hidden="true">A</span><strong class="auth-brand-name">ARTDON</strong><p class="auth-brand-sub">' . self::e(self::systemName()) . '</p></div></section>';
+        echo '<section class="auth-brand"><div class="auth-brand-inner">' . self::brandMark(true) . '<strong class="auth-brand-name">ARTDON</strong><p class="auth-brand-sub">' . self::e(self::systemName()) . '</p></div></section>';
         echo '<main class="auth-main" id="main"><div class="auth-card">';
         self::flashes();
     }

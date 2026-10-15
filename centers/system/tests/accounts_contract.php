@@ -140,7 +140,7 @@ Auth::logout();
 $e = expect_throws(ValidationException::class, static function () use ($svc, $salesId): void {
     $svc->resetPassword($salesId, ['new_password' => '123']);
 }, '指定的新密码太弱时拒绝');
-check($e instanceof ValidationException && ($e->fieldErrors()['new_password'] ?? '') === Password::RULE, '提示密码规则');
+check($e instanceof ValidationException && ($e->fieldErrors()['new_password'] ?? '') === Password::rule(), '提示密码规则');
 
 // ---------- 没有权限 ----------
 $plain = new AccountService(Auth::loadUser(centers_test_user(['username' => 'plain', 'email' => 'pl@example.com', 'role_id' => 2])));

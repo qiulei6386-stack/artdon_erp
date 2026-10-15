@@ -50,3 +50,5 @@ cd /www/wwwroot/Artdon/artdon_erp && php centers/_base/tools/init_config.php
 - 账号管理：`/artdon_erp/centers/system/accounts.php`（需要 users.view）
 - 权限中心 · 角色与权限：`/artdon_erp/centers/system/roles.php`；部门：`/artdon_erp/centers/system/departments.php`；人员权限：`/artdon_erp/centers/system/people.php`（需要 users.view）
 - 权限申请与临时授权：`/artdon_erp/centers/system/requests.php`（所有人可申请；审批与授权管理按权限显示）
+- 设置中心：`/artdon_erp/centers/system/settings.php`（公司信息与 Logo、安全设置、系统信息；查看 `settings.view`，修改 `settings.edit`）
+- 日志：`/artdon_erp/centers/system/logs.php`（登录日志、操作日志；`logs.view_all` 看全部，`logs.view_own` 只看自己）

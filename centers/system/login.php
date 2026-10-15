@@ -57,6 +57,9 @@ if (isset($_GET['logged_out'])) {
 if (isset($_GET['changed'])) {
     Layout::alert('success', '密码已修改，请用新密码登录。');
 }
+if (isset($_GET['timeout']) && $error === '') {
+    Layout::alert('info', '长时间没有操作，已自动退出，请重新登录。');
+}
 if (isset($_GET['inactive'])) {
     Layout::alert('warning', '账号已停用或正在审核，请联系管理员。');
 }

@@ -198,7 +198,7 @@ check($e instanceof ValidationException && isset($e->fieldErrors()['old_password
 $e = expect_throws(ValidationException::class, static function () use ($service, $uid): void {
     $service->changePassword($uid, ['old_password' => 'Artdon2026', 'new_password' => 'short', 'confirm_password' => 'short']);
 }, '新密码太弱时拒绝');
-check($e instanceof ValidationException && ($e->fieldErrors()['new_password'] ?? '') === Password::RULE, '提示密码规则');
+check($e instanceof ValidationException && ($e->fieldErrors()['new_password'] ?? '') === Password::rule(), '提示密码规则');
 expect_throws(ValidationException::class, static function () use ($service, $uid): void {
     $service->changePassword($uid, ['old_password' => 'Artdon2026', 'new_password' => 'Artdon2026', 'confirm_password' => 'Artdon2026']);
 }, '新密码与当前密码相同时拒绝');

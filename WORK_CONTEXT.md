@@ -1,5 +1,15 @@
 # Artdon ERP 工作上下文
 
+## 2026-10-15：系统中心第 4 步 · 设置中心与日志（新系统）
+
+- 上一步部署情况：PR #15（权限申请与临时授权）合并后自动部署成功，服务器 `d7e9c4f`。
+- 本次完成：`centers/system/settings.php` 三个分类：①公司信息（系统名称、公司中英文名、简称、地址、电话、邮箱、网站；沿用 `crm_system_settings` 里已有的键，与旧系统是同一份数据）与 Logo（PNG/JPG/WebP，45KB 内，16-2048 像素，浏览器先预览；以图片数据存 `centers.logo`，不写服务器文件；显示在登录页和侧栏，可去掉恢复字母 A）；②安全设置（存 `centers.security`，只作用于新系统：连续失败锁定次数 1-20、锁定分钟 1-1440、密码最短长度 8-32、闲置自动退出 0 或 10-1440 分钟）；③系统信息（程序版本、PHP、数据库、时区、账号/角色/部门/权限项数量、会话名）。`centers/system/logs.php`：登录日志（账号、结果、来源新/旧系统、日期筛选）和操作日志（操作人、模块、动作、日期筛选，详情弹窗显示修改前后），每页 50 条。导航“设置中心”可用，新增“日志”（`logs.view_own` 或 `logs.view_all` 可见；Nav 权限支持“a|b”）。登录页增加闲置退出提示。旧系统的修复表结构、备份功能不搬。
+- 底座：新增 `SystemSettings`（读设置、安全设置带范围保护、Logo 校验）、`Pager`（带省略号的分页条）；`Password` 最短长度和规则说明跟随安全设置；`Auth` 锁定次数和时长读安全设置，新增闲置自动退出（写登录日志）；`Layout` 有 Logo 时显示 Logo；新账号自动生成的密码长度跟随最短长度。
+- 接口：settings_company_save、settings_logo_save、settings_logo_remove、settings_security_save，都写 `crm_audit_logs`。
+- 修改文件：`centers/_base/src/{SystemSettings,Pager,Password,Auth,Layout,Nav}.php`、`centers/_base/assets/base.css`、`centers/_base/tests/harness.php`、`centers/system/{settings.php,logs.php,login.php,profile.php,api.php}`、`centers/system/assets/settings.js`、`centers/system/src/{SettingsService,LogService,AccountService,ProfileService}.php`、`centers/system/tests/{settings_contract,stage1_contract,accounts_contract}.php`、`centers/README.md`、`tools/ci_php_checks.sh`、本文件。
+- 检查结果：`settings_contract.php` 62 项及前五组契约测试全部通过；本地 SQLite + 无头浏览器六组全部通过（设置与日志 26 项）。`tools/ci_php_checks.sh` 契约 81 项全部通过；`tools/ci_js_checks.sh` 26 项通过。
+- 尚未完成 / 下一步：整理旧客户模块业务规则清单（查重、保护期、归属分配、可见范围），交用户确认后开始客户中心。审批通知仍未做。
+
 ## 2026-10-15：权限中心第 3 批 · 权限申请与临时授权（新系统）
 
 - 上一步部署情况：PR #14（人员权限）合并后自动部署成功，服务器 `715de44`。

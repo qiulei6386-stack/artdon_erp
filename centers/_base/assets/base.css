@@ -90,6 +90,8 @@ h1, h2, h3 { margin: 0; line-height: 1.3; }
 .side-brand { display: flex; align-items: center; gap: 10px; padding: 4px 8px 16px; text-decoration: none; color: #fff; }
 .side-brand:hover { color: #fff; }
 .side-mark { width: 28px; height: 28px; border-radius: var(--radius); background: var(--c-brand); color: #fff; display: inline-flex; align-items: center; justify-content: center; font-weight: 600; font-size: 14px; flex: 0 0 auto; }
+.brand-logo { width: 28px; height: 28px; object-fit: contain; border-radius: var(--radius); flex: 0 0 auto; }
+.brand-logo-lg { width: 44px; height: 44px; border-radius: 10px; }
 .side-mark-lg { width: 44px; height: 44px; font-size: 22px; border-radius: 10px; }
 .side-brand-text { display: flex; flex-direction: column; line-height: 1.25; min-width: 0; }
 .side-brand-text strong { font-size: 14px; letter-spacing: 0.02em; }
@@ -236,6 +238,7 @@ h1, h2, h3 { margin: 0; line-height: 1.3; }
 
 /* ---------- 弹窗 ---------- */
 .dialog { width: min(640px, calc(100vw - 32px)); max-height: calc(100vh - 48px); padding: 0; border: 1px solid var(--c-line); border-radius: var(--radius-lg); background: var(--c-surface); color: var(--c-ink); box-shadow: 0 24px 64px rgba(28, 25, 23, 0.25); }
+.dialog-wide { width: min(880px, calc(100vw - 32px)); }
 .dialog-sm { width: min(440px, calc(100vw - 32px)); }
 .dialog::backdrop { background: rgba(28, 25, 23, 0.45); }
 .dialog form { display: flex; flex-direction: column; max-height: calc(100vh - 48px); }
@@ -366,3 +369,12 @@ textarea.input { height: auto; min-height: 80px; padding: 8px 10px; resize: vert
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; }
 }
+
+/* 设置中心、日志 */
+.logo-preview { display: flex; align-items: center; gap: 12px; min-height: 72px; padding: 12px; border: 1px dashed var(--c-line); border-radius: var(--radius); background: var(--c-surface-2); }
+.logo-preview img { max-width: 96px; max-height: 64px; object-fit: contain; }
+.json-cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.json { margin: 6px 0 0; padding: 10px; max-height: 360px; overflow: auto; background: var(--c-surface-2); border: 1px solid var(--c-line-soft); border-radius: var(--radius); font-size: 12px; line-height: 1.5; white-space: pre-wrap; word-break: break-all; }
+.nowrap { white-space: nowrap; }
+.truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 600px) { .json-cols { grid-template-columns: 1fr; } }

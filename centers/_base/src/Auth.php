@@ -14,6 +14,8 @@ namespace Artdon\Centers\Base;
  */
 final class Auth
 {
+    private const SEEN_KEY = 'centers_last_seen';
+
     /** @var array<string, mixed>|null|false false 表示还没读取 */
     private static $user = false;
 
@@ -86,8 +88,9 @@ final class Auth
         }
         if (!Password::verify($password, (string) $user['password_hash'])) {
             $failed = (int) $user['failed_login_count'] + 1;
-            $max = max(1, (int) Config::get('app.login_max_failures', 5));
-            $minutes = max(1, (int) Config::get('app.login_lock_minutes', 15));
+            $security = SystemSettings::security();
+            $max = $security['login_max_failures'];
+            $minutes = $security['login_lock_minutes'];
             $lockedUntil = $failed >= $max ? date('Y-m-d H:i:s', time() + $minutes * 60) : null;
             $pdo->prepare('UPDATE crm_users SET failed_login_count = ?, locked_until = ?, updated_at = ? WHERE id = ?')
                 ->execute([$failed, $lockedUntil, Db::now(), $userId]);
@@ -97,6 +100,7 @@ final class Auth
 
         Session::regenerate();
         Session::set(Session::USER_KEY, $userId);
+        Session::set(self::SEEN_KEY, time());
         $pdo->prepare('UPDATE crm_users SET failed_login_count = 0, locked_until = NULL, last_login_at = ?, last_login_ip = ?, updated_at = ? WHERE id = ?')
             ->execute([Db::now(), Audit::ip(), Db::now(), $userId]);
         Audit::login($username, 'success', '登录成功', $userId);
@@ -143,9 +147,35 @@ final class Auth
         return $returnTo !== '' ? $url . '?redirect=' . rawurlencode($returnTo) : $url;
     }
 
-    /** 页面入口：未登录跳登录页；账号已不可用时退出并跳登录页。返回当前用户。 */
+    /**
+     * 闲置太久（超过安全设置里的分钟数）时退出登录，返回 true。没设置闲置退出时永远返回 false。
+     * 每次有效访问都会刷新最后活动时间。
+     */
+    public static function expireIfIdle(): bool
+    {
+        if (!self::user()) {
+            return false;
+        }
+        $minutes = SystemSettings::security()['session_idle_minutes'];
+        $seen = (int) Session::get(self::SEEN_KEY, 0);
+        if ($minutes > 0 && $seen > 0 && time() - $seen > $minutes * 60) {
+            $user = self::user();
+            Audit::login((string) $user['username'], 'logout', '闲置超过 ' . $minutes . ' 分钟自动退出', (int) $user['id']);
+            Session::destroy();
+            self::$user = null;
+            Permission::clearCache();
+            return true;
+        }
+        Session::set(self::SEEN_KEY, time());
+        return false;
+    }
+
+    /** 页面入口：未登录跳登录页；闲置超时或账号已不可用时退出并跳登录页。返回当前用户。 */
     public static function requirePage(): array
     {
+        if (self::expireIfIdle()) {
+            Http::redirect(self::loginUrl(Url::current()) . (strpos(self::loginUrl(Url::current()), '?') === false ? '?' : '&') . 'timeout=1', 302);
+        }
         $user = self::user();
         if (!$user) {
             Http::redirect(self::loginUrl(Url::current()), 302);
@@ -160,6 +190,9 @@ final class Auth
     /** 接口入口：未登录或账号不可用时返回 JSON 错误。 */
     public static function requireApi(): array
     {
+        if (self::expireIfIdle()) {
+            Http::fail(ErrorCode::AUTH_REQUIRED, '长时间没有操作，已自动退出，请重新登录');
+        }
         $user = self::user();
         if (!$user) {
             Http::fail(ErrorCode::AUTH_REQUIRED, '请先登录');
