@@ -17,10 +17,32 @@ final class Layout
         return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
     }
 
+    /** 系统名称：读 crm_system_settings 里的 system_name，读不到时用默认名。 */
     public static function systemName(): string
     {
-        $name = function_exists('app_setting') ? (string) app_setting('system_name', '') : '';
-        return $name !== '' ? $name : 'Artdon 业务系统';
+        static $name = null;
+        if ($name === null) {
+            $name = '';
+            try {
+                if (Config::exists() && Db::tableExists('crm_system_settings')) {
+                    $stmt = Db::pdo()->prepare("SELECT setting_value FROM crm_system_settings WHERE setting_key = 'system_name' LIMIT 1");
+                    $stmt->execute();
+                    $name = trim((string) $stmt->fetchColumn());
+                }
+            } catch (\Throwable $e) {
+                $name = '';
+            }
+            if ($name === '') {
+                $name = 'Artdon 业务系统';
+            }
+        }
+        return $name;
+    }
+
+    /** 首页：目前是个人账号，以后有工作台后改这里。 */
+    public static function homeUrl(): string
+    {
+        return Url::center('system', 'profile.php');
     }
 
     /**
@@ -35,23 +57,22 @@ final class Layout
         self::head($title, 'app');
         echo '<div class="app">';
         echo '<aside class="side" id="side" aria-label="导航">';
-        echo '<a class="side-brand" href="' . self::e(Url::app('index.php')) . '"><span class="side-mark" aria-hidden="true">A</span><span class="side-brand-text"><strong>ARTDON</strong><small>' . self::e(self::systemName()) . '</small></span></a>';
+        echo '<a class="side-brand" href="' . self::e(self::homeUrl()) . '"><span class="side-mark" aria-hidden="true">A</span><span class="side-brand-text"><strong>ARTDON</strong><small>' . self::e(self::systemName()) . '</small></span></a>';
         foreach ($groups as $group) {
             if ($group['title'] !== '') {
                 echo '<div class="side-title">' . self::e($group['title']) . '</div>';
             }
             echo '<nav class="side-nav" aria-label="' . self::e($group['title'] !== '' ? $group['title'] : '业务中心') . '">';
             foreach ($group['items'] as $item) {
-                $class = 'side-link' . (!empty($item['active']) ? ' is-active' : '') . (empty($item['icon']) ? ' is-plain' : '');
-                echo '<a class="' . $class . '" href="' . self::e($item['href']) . '"' . (!empty($item['active']) ? ' aria-current="page"' : '') . '>';
-                if (!empty($item['icon'])) {
-                    echo Icon::svg((string) $item['icon'], 16, 'side-icon');
+                $class = 'side-link' . (!empty($item['active']) ? ' is-active' : '') . (empty($item['icon']) ? ' is-plain' : '') . (empty($item['ready']) ? ' is-pending' : '');
+                $inner = (!empty($item['icon']) ? Icon::svg((string) $item['icon'], 16, 'side-icon') : '')
+                    . '<span class="side-label">' . self::e($item['label']) . '</span>'
+                    . (empty($item['ready']) ? '<span class="side-tag">建设中</span>' : '');
+                if (!empty($item['ready'])) {
+                    echo '<a class="' . $class . '" href="' . self::e($item['href']) . '"' . (!empty($item['active']) ? ' aria-current="page"' : '') . '>' . $inner . '</a>';
+                } else {
+                    echo '<span class="' . $class . '" aria-disabled="true">' . $inner . '</span>';
                 }
-                echo '<span class="side-label">' . self::e($item['label']) . '</span>';
-                if (!empty($item['legacy'])) {
-                    echo '<span class="side-legacy">旧版</span>';
-                }
-                echo '</a>';
             }
             echo '</nav>';
         }
@@ -118,14 +139,26 @@ final class Layout
     {
         http_response_code(403);
         self::start(['title' => '没有权限', 'nav' => '']);
-        echo '<div class="empty"><div class="empty-icon">' . Icon::svg('lock', 28) . '</div><h1 class="empty-title">没有权限访问这个页面</h1><p class="empty-text">需要的权限：<code>' . self::e($permission) . '</code>。如需开通，请联系管理员或在权限中心提交申请。</p><a class="btn" href="' . self::e(Url::app('index.php')) . '">返回首页</a></div>';
+        echo '<div class="empty"><div class="empty-icon">' . Icon::svg('lock', 28) . '</div><h1 class="empty-title">没有权限访问这个页面</h1><p class="empty-text">需要的权限：<code>' . self::e($permission) . '</code>。如需开通，请联系管理员或在权限中心提交申请。</p><a class="btn" href="' . self::e(self::homeUrl()) . '">返回首页</a></div>';
         self::end();
         exit;
     }
 
     public static function csrfField(): string
     {
-        return '<input type="hidden" name="csrf_token" value="' . self::e(function_exists('csrf_token') ? csrf_token() : '') . '">';
+        return Csrf::field();
+    }
+
+    /** 出错页（不显示技术细节），输出后结束请求。 */
+    public static function errorPage(int $status, string $title, string $text): void
+    {
+        if (!headers_sent()) {
+            http_response_code($status);
+        }
+        self::head($title, 'auth');
+        echo '<main class="error-page" id="main"><div class="empty"><div class="empty-icon">' . Icon::svg('lock', 28) . '</div><h1 class="empty-title">' . self::e($title) . '</h1><p class="empty-text">' . self::e($text) . '</p></div></main>';
+        self::foot();
+        exit;
     }
 
     private static function head(string $title, string $bodyClass): void
@@ -140,7 +173,7 @@ final class Layout
         echo '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">';
         echo '<meta name="viewport" content="width=device-width, initial-scale=1">';
         echo '<meta name="robots" content="noindex">';
-        echo '<meta name="csrf-token" content="' . self::e(function_exists('csrf_token') ? csrf_token() : '') . '">';
+        echo '<meta name="csrf-token" content="' . self::e(session_status() === PHP_SESSION_ACTIVE ? Csrf::token() : '') . '">';
         echo '<meta name="centers-login" content="' . self::e(Url::center('system', 'login.php')) . '">';
         echo '<title>' . self::e($full) . '</title>';
         echo '<link rel="stylesheet" href="' . self::e(Url::asset('base.css')) . '">';

@@ -6,9 +6,9 @@ namespace Artdon\Centers\Base;
 use stdClass;
 
 /**
- * 请求与响应。接口返回格式与旧系统 api_response() 相同：
+ * 请求与响应。接口统一返回：
  *   {"success": bool, "message": string, "data": object|array, "error_code": string}
- * 区别是同时设置正确的 HTTP 状态码。
+ * 并设置对应的 HTTP 状态码（见 ErrorCode）。
  */
 final class Http
 {
@@ -52,10 +52,10 @@ final class Http
         }
     }
 
-    /** 校验 CSRF 令牌（表单字段 csrf_token 或请求头 X-CSRF-Token），沿用旧系统的 verify_csrf()。 */
+    /** 校验 CSRF 令牌（表单字段 csrf_token 或请求头 X-CSRF-Token）。 */
     public static function csrfValid(): bool
     {
-        return function_exists('verify_csrf') && verify_csrf();
+        return Csrf::valid();
     }
 
     public static function requireCsrf(): void

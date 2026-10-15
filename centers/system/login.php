@@ -2,24 +2,25 @@
 declare(strict_types=1);
 
 /**
- * 新登录页。登录逻辑直接调用旧系统 includes/auth.php 的 login_user()：
- * 同一张 crm_users 表、同样的密码校验、失败 5 次锁定 15 分钟、同样写登录日志。
- * 登录后的会话与旧系统通用，旧页面无需再次登录。
+ * 新系统登录页。账号密码来自 crm_users；登录状态保存在新系统自己的会话里，与旧系统互不影响。
+ * 规则见 Artdon\Centers\Base\Auth::attempt()。
  */
 
 require_once __DIR__ . '/bootstrap.php';
 
 use Artdon\Centers\Base\Auth;
+use Artdon\Centers\Base\Config;
+use Artdon\Centers\Base\ConfigMissingException;
 use Artdon\Centers\Base\Form;
 use Artdon\Centers\Base\Http;
 use Artdon\Centers\Base\Layout;
 use Artdon\Centers\Base\Url;
 
-if (!config_installed()) {
-    Http::redirect(Url::app('install.php'), 302);
+if (!Config::exists()) {
+    throw new ConfigMissingException('缺少 centers/config.php');
 }
 
-$fallback = Url::app('index.php');
+$fallback = Layout::homeUrl();
 $redirectTo = Url::safeRedirect((string) ($_POST['redirect'] ?? ($_GET['redirect'] ?? '')), $fallback);
 
 $current = Auth::user();
@@ -37,7 +38,7 @@ if (Http::isPost()) {
     } elseif ($username === '' || $password === '') {
         $error = '请输入账号和密码';
     } else {
-        $result = login_user($username, $password);
+        $result = Auth::attempt($username, $password);
         if (!empty($result['success'])) {
             if ((int) ($result['user']['force_password_change'] ?? 0) === 1) {
                 // 个人账号页会根据账号上的标记显示“请修改密码”的提醒
@@ -74,6 +75,6 @@ if ($error !== '') {
   <?= Form::input('password', '密码', '', [], ['type' => 'password', 'required' => true, 'autocomplete' => 'current-password', 'autofocus' => $username !== '']) ?>
   <button type="submit" class="btn btn-primary btn-block">登录</button>
 </form>
-<p class="auth-foot">还没有账号？<a href="<?= Layout::e(Url::app('register.php')) ?>">申请账号</a></p>
+<p class="auth-foot">还没有账号？请联系管理员开通。</p>
 <?php
 Layout::authEnd();

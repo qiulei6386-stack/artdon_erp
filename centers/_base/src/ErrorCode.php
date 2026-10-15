@@ -5,7 +5,6 @@ namespace Artdon\Centers\Base;
 
 /**
  * 接口错误码。所有中心统一使用，前端按错误码判断，不按提示文字判断。
- * 已有的 AUTH_REQUIRED、PERMISSION_DENIED、CSRF_INVALID 与旧系统保持同名。
  */
 final class ErrorCode
 {

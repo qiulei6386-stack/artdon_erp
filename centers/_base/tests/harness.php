@@ -2,13 +2,12 @@
 declare(strict_types=1);
 
 /**
- * 契约测试夹具：不连正式库，用内存 SQLite 模拟旧系统的账号权限表。
+ * 契约测试夹具：不连正式库，用内存 SQLite 模拟正式库的账号权限表。
  *
- * - 建表语句直接取自仓库 sql/001_auth_permission_base.sql、sql/002_permission_requests.sql，
+ * - 建表语句取自仓库 sql/001_auth_permission_base.sql、sql/002_permission_requests.sql，
  *   按 SQLite 语法做机械转换，表名和字段与正式库一致；
- * - 正式库里由旧代码运行时补的字段（crm_users.position、email 可空）在这里显式补上；
- * - 只引入旧系统中只定义函数、不连库的文件（auth、permission、audit、password、csrf），
- *   db() 和 db_table_exists() 由本文件提供。
+ * - 正式库里后来补上的字段（crm_users.position、email 可空）在这里显式补上；
+ * - 只加载新系统的类，不引用旧系统任何代码。
  *
  * 用法：require 本文件后调用 centers_test_reset() 得到干净的数据库。
  */
@@ -27,29 +26,18 @@ $GLOBALS['centers_test_root'] = dirname(__DIR__, 3);
 $GLOBALS['centers_test_failures'] = [];
 $GLOBALS['centers_test_passed'] = 0;
 
+require_once dirname(__DIR__) . '/autoload.php';
+
+\Artdon\Centers\Base\Config::set([
+    'db' => [],
+    'app' => ['session_name' => 'ARTDON_CENTERS_TEST', 'login_max_failures' => 5, 'login_lock_minutes' => 15, 'timezone' => 'Asia/Shanghai'],
+]);
+date_default_timezone_set('Asia/Shanghai');
+
+/** 测试里直接取连接。 */
 function db(): PDO
 {
-    if (!isset($GLOBALS['centers_test_pdo'])) {
-        centers_test_reset();
-    }
-    return $GLOBALS['centers_test_pdo'];
-}
-
-function db_table_exists($table)
-{
-    $stmt = db()->prepare("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?");
-    $stmt->execute([(string) $table]);
-    return (int) $stmt->fetchColumn() > 0;
-}
-
-function config_installed()
-{
-    return true;
-}
-
-function h($value)
-{
-    return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
+    return \Artdon\Centers\Base\Db::pdo();
 }
 
 /** 把仓库里的 MySQL 建表语句转成 SQLite。只处理这几份文件用到的语法。 */
@@ -93,9 +81,6 @@ function centers_test_reset(): PDO
         PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
     ]);
-    $pdo->sqliteCreateFunction('NOW', static function (): string {
-        return date('Y-m-d H:i:s');
-    }, 0);
     $root = $GLOBALS['centers_test_root'];
     foreach (['sql/001_auth_permission_base.sql', 'sql/002_permission_requests.sql'] as $file) {
         $sql = (string) file_get_contents($root . '/' . $file);
@@ -108,7 +93,10 @@ function centers_test_reset(): PDO
 
     $pdo->exec("INSERT INTO crm_departments (id, name, code, status, sort_order) VALUES (1, '外贸部', 'overseas_sales', 'active', 11), (2, '财务部', 'finance', 'active', 40), (3, '旧总部', 'headquarters', 'disabled', 1)");
     $pdo->exec("INSERT INTO crm_roles (id, role_key, role_name, status) VALUES (1, 'super_admin', '超级管理员', 'active'), (2, 'sales', '业务员', 'active')");
-    $GLOBALS['centers_test_pdo'] = $pdo;
+    \Artdon\Centers\Base\Db::set($pdo);
+    \Artdon\Centers\Base\Permission::clearCache();
+    \Artdon\Centers\Base\Auth::refresh();
+    $_SESSION = [];
     return $pdo;
 }
 
@@ -162,10 +150,4 @@ function centers_test_finish(string $name): void
     exit($failed === 0 ? 0 : 1);
 }
 
-$root = $GLOBALS['centers_test_root'];
-require_once $root . '/includes/password.php';
-require_once $root . '/includes/csrf.php';
-require_once $root . '/includes/audit.php';
-require_once $root . '/includes/auth.php';
-require_once $root . '/includes/permission.php';
-require_once $root . '/centers/_base/autoload.php';
+centers_test_reset();

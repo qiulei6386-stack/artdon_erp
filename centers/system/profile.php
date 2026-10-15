@@ -10,6 +10,7 @@ use Artdon\Centers\Base\Flash;
 use Artdon\Centers\Base\Form;
 use Artdon\Centers\Base\Http;
 use Artdon\Centers\Base\Layout;
+use Artdon\Centers\Base\Password;
 use Artdon\Centers\Base\Url;
 use Artdon\Centers\Base\ValidationException;
 use Artdon\Centers\System\ProfileService;
@@ -41,7 +42,7 @@ if (Http::isPost()) {
     } elseif ($mode === 'password') {
         try {
             $service->changePassword($userId, $_POST);
-            logout_user();
+            Auth::logout();
             Http::redirect(Url::center('system', 'login.php') . '?changed=1');
         } catch (ValidationException $e) {
             $passwordErrors = $e->fieldErrors();
@@ -122,7 +123,7 @@ Layout::start([
         <input type="text" name="username" value="<?= Layout::e((string) ($profile['username'] ?? '')) ?>" autocomplete="username" class="sr-only" tabindex="-1" aria-hidden="true">
         <div class="card-body form-grid">
           <div class="span-2"><?= Form::input('old_password', '当前密码', '', $passwordErrors, ['type' => 'password', 'required' => true, 'autocomplete' => 'current-password']) ?></div>
-          <?= Form::input('new_password', '新密码', '', $passwordErrors, ['type' => 'password', 'required' => true, 'autocomplete' => 'new-password', 'minlength' => 8, 'hint' => ProfileService::strengthMessage()]) ?>
+          <?= Form::input('new_password', '新密码', '', $passwordErrors, ['type' => 'password', 'required' => true, 'autocomplete' => 'new-password', 'minlength' => 8, 'hint' => Password::RULE]) ?>
           <?= Form::input('confirm_password', '确认新密码', '', $passwordErrors, ['type' => 'password', 'required' => true, 'autocomplete' => 'new-password', 'minlength' => 8]) ?>
         </div>
         <div class="card-foot"><span class="muted" style="margin-right:auto">修改后需要用新密码重新登录</span><button type="submit" class="btn btn-primary">修改密码</button></div>
