@@ -1,5 +1,20 @@
 # Artdon ERP 工作上下文
 
+## 2026-10-15：邮箱系统第一批（一）· 邮箱账号、收件箱、读信（新系统）
+
+- 上一步：PR #24 邮箱规则清单，服务器 `fe61a74`。用户确认 6 项决定：过渡期旧定时任务继续收信、新系统发信时自己立即发；一次性工具迁移加密种子；`mail.account_manage_all` 只管账号不能读信，读别人的信需要新权限 `mail.view_all` 且留日志；客户详情邮件标签按 `customer.mail_summary`；撤回保留（改名“发送撤回通知”）；产品资料附件、Office 预览放第三批。
+- 本次完成（`centers/mail/`，只读写数据库，不引用旧代码）：
+  - 邮箱设置 `accounts.php`：绑定多个邮箱（常用邮箱类型自动填服务器）、修改（授权码留空不改）、测试收信 / 发信（自写 socket IMAP/SMTP，显示服务器原因）、设为默认、停用、删除（只做标记，已收邮件保留；旧系统会连邮件一起删）；发件人名称、签名。授权码与旧系统同算法加密，页面和日志里都不出现。
+  - 邮箱 `index.php`：收件箱、已发送、未读、星标、未回复（发出 3–60 天、对方之后没来信、没标记已处理）、有附件、已关联 / 未关联客户、已删除；多邮箱时可按邮箱筛选；搜索主题、发件人、收件人、正文、附件名；已读未读、时间筛选；分页 30 封；批量标已读 / 未读、加星标、删除、恢复；列表点星标直接切换。“已发送”隐藏重复（规则同旧系统，改在 PHP 里算）。
+  - 读信 `read.php`：收发件人、抄送、时间、收信邮箱；附件下载（`mail.attachment_download`，路径必须在 storage 下）；正文 `body.php` 放在无脚本沙箱 iframe 里并带 CSP，去掉脚本、事件、表单、meta 跳转，内嵌图片（cid、旧系统附件地址、storage 路径）换成新地址；打开即标已读。关联客户：按客户/联系人邮箱、客户域名给建议（公共邮箱不猜、只建议看得到的客户），一键关联或搜索选择，自动对上联系人；可取消关联。
+  - 删除只置 `is_deleted=1`（保留文件夹）；旧系统删除的（folder=deleted）也算已删除，恢复时按来源回到收件箱或已发送。
+  - 查看全部邮件：有 `mail.view_all` 可选人查看，只读、不改已读状态，每次读信记日志 `mail_view_other`。
+  - 导航“邮箱系统”可点击。工具 `centers/_base/tools/mail_setup.php`：从旧配置 app_key / db_name / 程序目录里找出能解开已有授权码的种子写入 `centers/config.php`，补权限 `mail.view_all`、`customer.mail_summary`。
+- 修改文件：`centers/mail/{index,read,body,attachment,accounts,api,bootstrap}.php`、`centers/mail/src/{MailCrypto,MailProtocol,DeliveryUncertain,MailAccounts,Mailbox,MailBody,MailView}.php`、`centers/mail/assets/{mail.css,mail.js}`、`centers/mail/tests/{schema,mailbox_contract}.php`、`centers/_base/tools/mail_setup.php`、`centers/_base/src/Nav.php`、`centers/README.md`、`tools/ci_php_checks.sh`、本文件。
+- 检查结果：`mailbox_contract.php` 83 项通过（加密与旧系统兼容、种子识别、账号权限、假服务器测试登录、列表各文件夹、已发送去重、未回复、读信、附件权限与路径、查看别人邮件只读留日志、正文清理）；本地浏览器邮箱 50 项通过（含手机宽度、脚本不执行、内嵌图片、下载文件名）；`tools/ci_php_checks.sh` 契约 87 项、`tools/ci_js_checks.sh` 26 项通过。
+- 需要用户在服务器做：部署后运行 `php centers/_base/tools/mail_setup.php`，再到权限中心把 `mail.view_all` 分给需要的人。
+- 尚未完成 / 下一步：邮箱第一批（二）写信、回复、全部回复、转发、附件、草稿、立即发送（新系统自己发，写成旧系统格式的已发送记录）；然后第二批（新收信程序与定时发送、撤回通知、从邮件建客户、客户详情邮件标签、未回复提醒、新邮件通知）。
+
 ## 2026-10-15：邮箱系统 · 旧邮箱规则清单（待用户确认，无代码修改）
 
 - 上一步：PR #23 客户中心第二批（三），服务器 `3d29df0`（已确认部署成功）。客户中心除邮件/报价/订单汇总外已完成。

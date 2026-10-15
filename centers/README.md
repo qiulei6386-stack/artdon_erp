@@ -43,6 +43,14 @@ cd /www/wwwroot/Artdon/artdon_erp && php centers/_base/tools/init_config.php
 
 脚本会复制数据库连接信息、测试能否连上，再写入 `centers/config.php`（权限 640，属主 www）。之后新旧系统的配置各自独立。
 
+邮箱系统上线后再运行一次（可重复运行）：
+
+```
+cd /www/wwwroot/Artdon/artdon_erp && php centers/_base/tools/mail_setup.php
+```
+
+它会找出旧系统加密邮箱授权码用的种子并验证能解开已有邮箱，写入 `centers/config.php` 的 `mail.key_seed`（大家不用重新绑定邮箱）；并补上权限 `mail.view_all`、`customer.mail_summary`。
+
 ## 地址
 
 - 登录：`/artdon_erp/centers/system/login.php`
@@ -57,6 +65,8 @@ cd /www/wwwroot/Artdon/artdon_erp && php centers/_base/tools/init_config.php
 - 客户暂存池：`/artdon_erp/centers/customer/leads.php`（查看 `customer.lead_pool_view`，处理 `customer.lead_pool`）
 - 客户分组：`/artdon_erp/centers/customer/groups.php`（管理需要 `customer.batch`）
 - 导入客户：`/artdon_erp/centers/customer/import.php`（`customer.import`）；导出：客户列表“导出”按钮（`customer.export`）
+- 邮箱：`/artdon_erp/centers/mail/index.php`（`mail.view`；读信 `read.php?id=`；看别人的邮件 `mail.view_all`，只读、留日志）
+- 邮箱设置：`/artdon_erp/centers/mail/accounts.php`（自己的 `mail.account_bind_own`；帮同事维护 `mail.account_manage_all`，不能读信）
 
 ## 底座公共件（给各业务中心用）
 
