@@ -8,8 +8,9 @@
 - 导航：四个中心、其他功能、账号管理、权限中心、设置中心、日志暂时指向旧页面并标“旧版”，按权限显示。
 - 修改文件：新增 `centers/README.md`、`centers/_base/**`、`centers/system/**`；`tools/ci_php_checks.sh` 加入 `centers/system/tests/stage1_contract.php`；修复既有测试 `tests/crm_workspace_isolated.php`（10-14 跟进记录 P1 让 `crm_visit_list()` 调用新函数 `crm_visit_category_terms()`，测试只摘取了前者导致报错，现改为两个一起摘取，只改测试不改业务代码）；本文件。旧 CRM 与 `includes/` 无改动。
 - 检查结果：新增 PHP 全部 `php -l` 通过（本机 PHP 8.3，代码避开 8.1+ 语法以兼容 CI 的 PHP 8.0）；`node --check centers/_base/assets/base.js` 通过。`php centers/system/tests/stage1_contract.php` 42 项全部通过（内存 SQLite，表结构取自 `sql/001`、`sql/002`；含跳转过滤与 `auth_safe_redirect()` 一致、改密码后可用旧 `login_user()` 登录、中心代码无建表改表语句）。临时副本 + SQLite 替身 + 本地 PHP 服务器 + 无头浏览器走通 19 项：未登录跳转并带回跳地址、错密码提示、登录回跳、资料字段错误、保存与刷新不重复提示、改密码后重新登录、伪造令牌退出无效、用户菜单退出、初始密码引导、待审核不能登录、手机宽度导航、超管导航、控制台无报错；1440、1366、390 宽截图核对。`tools/ci_php_checks.sh` 全量：语法 0 失败；修复既有测试后契约全部通过；`tools/ci_js_checks.sh` 26 项通过。
-- 服务器部署情况：未部署。按流程开 PR，用户合并到 `main` 后由 GitHub Actions 部署。注意：GitHub Actions 上 `main` 最近两次运行均失败——10-14 04:39 那次“部署”步骤失败，10-14 07:13 那次因上面的既有测试失败没有进入部署，正式服务器可能落后于 `main`，需要用户确认。本环境无法 SSH 正式机，也无法读取 Actions 失败日志。
-- Git 提交号及推送状态：分支 `claude/centers-base-stage1`，提交号见 PR。
+- 服务器部署情况：PR #9 经用户确认后合并（rebase），GitHub Actions 运行 38664932471：检查通过；部署步骤已把服务器快进到 `0c7f776`（用户在宝塔终端确认 `git log -1` 为 `0c7f776`，与 GitHub 一致），但最后在服务器上跑 `tools/ci_php_checks.sh` 失败，所以 Actions 显示红色。原因：服务器上 8 个旧文件权限为 640（`miniapp/migrate.php`、`promotion/api.php`、`api_live.php`、`cron.php`、`index.php`、`migrate_v2.php`、`promo_lib.php`、`track.php`，其中 `migrate_v2.php` 属主为 root），部署用户读不了，`php -l` 报 `Could not open input file`；10-14 04:39 那次部署失败也是同一原因。用户已在服务器执行 `chown www:www promotion/migrate_v2.php && chmod 644 miniapp/migrate.php promotion/*.php`（只改权限，Git 不跟踪，工作区仍干净）。服务器 PHP 8.0 有 `pdo_sqlite`，新契约测试可在服务器运行。用户用正式账号在新登录页登录正常，个人账号页显示正常，进旧 CRM 无需再登录。
+- 部署传输较慢（约 17 分钟），部署脚本每次传完整仓库的 Git 包，后续可改为只传增量，需用户同意后再改工作流。
+- Git 提交号及推送状态：`5d11753`→`main` 上为 rebase 后的提交，`main` HEAD `0c7f776`；本记录更新另走一个 PR，合并后再次部署，用来验证服务器检查能否全部通过。
 - 尚未完成 / 下一步：系统中心第 2 步账号管理；第 3 步权限中心；第 4 步设置中心。界面样稿（客户中心列表与详情）待用户确认。迁移脚本执行器等到第一次需要新表时再加。
 
 ## 2026-10-14：小程序跟进记录 P1（仍走拜访接口）
