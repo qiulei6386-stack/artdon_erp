@@ -83,6 +83,44 @@ final class MailAccounts
         return $out;
     }
 
+    /** 邮箱状态：[文字, 样式 good/warn/bad/muted]。 @return array{0: string, 1: string} */
+    public static function state(array $a): array
+    {
+        $s = (string) ($a['sync_status'] ?? '');
+        if ((int) ($a['is_enabled'] ?? 1) !== 1) {
+            return ['已停用', 'muted'];
+        }
+        if ($s === 'failed' || $s === 'error' || trim((string) ($a['sync_error'] ?? '')) !== '') {
+            return ['收信出错', 'bad'];
+        }
+        if (!empty($a['last_sync_time'])) {
+            return ['正常', 'good'];
+        }
+        return ['等待第一次收信', 'warn'];
+    }
+
+    /**
+     * 每个邮箱最近 30 天收、发数量和未读数（只是数量，不含邮件内容，维护邮箱的人也能看）。
+     *
+     * @return array<int, array{received: int, sent: int, unread: int, total: int}>
+     */
+    public function stats(int $userId): array
+    {
+        $stmt = $this->pdo->prepare("SELECT mail_account_id,
+                SUM(CASE WHEN folder = 'inbox' AND COALESCE(received_at, created_at) >= ? THEN 1 ELSE 0 END) AS received,
+                SUM(CASE WHEN folder = 'sent' AND COALESCE(sent_at, created_at) >= ? THEN 1 ELSE 0 END) AS sent,
+                SUM(CASE WHEN folder = 'inbox' AND is_read = 0 THEN 1 ELSE 0 END) AS unread,
+                COUNT(*) AS total
+            FROM crm_mails WHERE user_id = ? AND is_deleted = 0 GROUP BY mail_account_id");
+        $since = date('Y-m-d H:i:s', time() - 30 * 86400);
+        $stmt->execute([$since, $since, $userId]);
+        $out = [];
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+            $out[(int) $r['mail_account_id']] = ['received' => (int) $r['received'], 'sent' => (int) $r['sent'], 'unread' => (int) $r['unread'], 'total' => (int) $r['total']];
+        }
+        return $out;
+    }
+
     /** 有邮箱的人：编号 => 姓名（已停用的标出来），按姓名排序。 @return array<int, string> */
     public function ownerNames(): array
     {

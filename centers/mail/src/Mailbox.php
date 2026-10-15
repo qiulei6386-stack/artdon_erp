@@ -38,6 +38,16 @@ final class Mailbox
 
     public const PER_PAGE = 30;
 
+    /** 邮件分类（与旧系统相同的分类；没有手动分类时按主题关键词判断，先判断的优先）。 */
+    public const CATEGORIES = ['quote' => '报价', 'sample' => '样品', 'service' => '售后', 'promotion' => '推广', 'normal' => '普通'];
+
+    private const CATEGORY_WORDS = [
+        'promotion' => ['promotion', 'edm', 'campaign', 'newsletter', '推广', '促销', '营销'],
+        'quote' => ['quote', 'quotation', 'price', 'offer', 'proforma', '报价', '价格', '形式发票'],
+        'sample' => ['sample', 'prototype', '样品', '寄样'],
+        'service' => ['after-sales', 'service', 'warranty', 'complaint', 'repair', '售后', '维修', '质保', '投诉'],
+    ];
+
     /** 未回复：发出多少天后还没收到对方回信。 */
     public const UNREPLIED_DAYS = 3;
 
@@ -112,7 +122,7 @@ final class Mailbox
         $pages = max(1, (int) ceil($total / self::PER_PAGE));
         $page = max(1, min($page, $pages));
         $stmt = $this->pdo->prepare('SELECT m.id, m.mail_account_id, m.folder, m.subject, m.from_email, m.from_name, m.to_emails, m.received_at, m.sent_at, m.created_at,
-                m.has_attachment, m.attachment_count, m.is_read, m.is_replied, m.is_starred, m.is_deleted, m.linked_customer_id, m.send_status, m.mail_source, m.message_uid,
+                m.has_attachment, m.attachment_count, m.is_read, m.is_replied, m.is_starred, m.is_deleted, m.linked_customer_id, m.send_status, m.mail_source, m.message_uid, m.mail_category,
                 SUBSTR(COALESCE(m.body_text, \'\'), 1, 200) AS snippet,
                 (SELECT COUNT(*) FROM crm_mail_attachments a WHERE a.mail_id = m.id AND COALESCE(a.is_inline, 0) = 0 AND COALESCE(a.is_signature_image, 0) = 0) AS visible_attachments,
                 c.customer_name AS linked_customer_name' . str_replace(' FROM crm_mails m ', ' FROM crm_mails m LEFT JOIN crm_customers c ON c.id = m.linked_customer_id ', $sql)
@@ -123,9 +133,68 @@ final class Mailbox
             $row['is_outgoing'] = self::isOutgoing($row);
             $row['time'] = (string) ($row['is_outgoing'] ? ($row['sent_at'] ?: $row['created_at']) : ($row['received_at'] ?: $row['created_at']));
             $row['snippet'] = trim((string) preg_replace('/\s+/u', ' ', (string) $row['snippet']));
+            $row['category'] = self::category($row);
         }
         unset($row);
         return ['rows' => $rows, 'total' => $total, 'page' => $page, 'pages' => $pages];
+    }
+
+    /** 当前文件夹和筛选下（不算分类筛选）各分类的数量。 @return array<string, int> */
+    public function categoryCounts(string $folder, array $f): array
+    {
+        $folder = isset(self::FOLDERS[$folder]) ? $folder : 'inbox';
+        unset($f['cat']);
+        [$where, $params] = $this->where($folder, $f);
+        $cols = [];
+        foreach (array_keys(self::CATEGORIES) as $cat) {
+            $cols[] = 'SUM(CASE WHEN ' . self::categorySql($cat) . ' THEN 1 ELSE 0 END) AS ' . $cat;
+        }
+        $stmt = $this->pdo->prepare('SELECT COUNT(*) AS total, ' . implode(', ', $cols) . ' FROM crm_mails m WHERE ' . implode(' AND ', $where));
+        $stmt->execute($params);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+        $out = [];
+        foreach ($row as $k => $v) {
+            $out[$k] = (int) $v;
+        }
+        return $out;
+    }
+
+    /** 一封邮件的分类。 */
+    public static function category(array $row): string
+    {
+        $manual = trim((string) ($row['mail_category'] ?? ''));
+        if ($manual !== '' && $manual !== 'normal' && isset(self::CATEGORIES[$manual])) {
+            return $manual;
+        }
+        $subject = strtolower((string) ($row['subject'] ?? ''));
+        foreach (self::CATEGORY_WORDS as $cat => $words) {
+            foreach ($words as $w) {
+                if ($subject !== '' && strpos($subject, $w) !== false) {
+                    return $cat;
+                }
+            }
+        }
+        return 'normal';
+    }
+
+    /** 分类条件（SQL），与 category() 判断一致。 */
+    public static function categorySql(string $cat): string
+    {
+        $auto = "(m.mail_category IS NULL OR m.mail_category IN ('', 'normal') OR m.mail_category NOT IN ('" . implode("', '", array_keys(self::CATEGORIES)) . "'))";
+        $any = static function (array $words): string {
+            return '(' . implode(' OR ', array_map(static function (string $w): string {
+                return "LOWER(COALESCE(m.subject, '')) LIKE '%" . $w . "%'";
+            }, $words)) . ')';
+        };
+        $before = [];
+        foreach (self::CATEGORY_WORDS as $c => $words) {
+            if ($c === $cat) {
+                $cond = $auto . ' AND ' . $any($words) . ($before ? ' AND NOT ' . $any(array_merge(...$before)) : '');
+                return "(m.mail_category = '" . $c . "' OR (" . $cond . '))';
+            }
+            $before[] = $words;
+        }
+        return '(' . $auto . ' AND NOT ' . $any(array_merge(...array_values(self::CATEGORY_WORDS))) . ')';
     }
 
     /** 侧栏数字：未读、已删除。 @return array<string, int> */
@@ -467,6 +536,22 @@ final class Mailbox
             $where[] = "(m.subject LIKE ? ESCAPE '!' OR m.from_email LIKE ? ESCAPE '!' OR m.from_name LIKE ? ESCAPE '!' OR m.to_emails LIKE ? ESCAPE '!' OR m.body_text LIKE ? ESCAPE '!'
                 OR EXISTS (SELECT 1 FROM crm_mail_attachments a WHERE a.mail_id = m.id AND a.file_name LIKE ? ESCAPE '!'))";
             array_push($params, $like, $like, $like, $like, $like, $like);
+        }
+        $cat = (string) ($f['cat'] ?? '');
+        if (isset(self::CATEGORIES[$cat])) {
+            $where[] = self::categorySql($cat);
+        }
+        if ((string) ($f['att'] ?? '') === '1') {
+            $where[] = self::VISIBLE_ATTACHMENT;
+        }
+        $customer = (int) ($f['customer'] ?? 0);
+        if ($customer > 0) {
+            $where[] = 'm.linked_customer_id = ?';
+            $params[] = $customer;
+        }
+        $cust = (string) ($f['cust'] ?? '');
+        if ($cust === 'linked' || $cust === 'unlinked') {
+            $where[] = 'm.linked_customer_id IS ' . ($cust === 'linked' ? 'NOT ' : '') . 'NULL';
         }
         $read = (string) ($f['read'] ?? '');
         if ($read === 'read' || $read === 'unread') {

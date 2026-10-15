@@ -306,6 +306,49 @@ check(strpos(MailBody::csp(), "default-src 'none'") === 0 && strpos(MailBody::cs
 check(Mailbox::addresses('"Raj, K" <Raj@Acme.in>, info@acme.in; x@y.co') === ['raj@acme.in', 'info@acme.in', 'x@y.co'], '解析地址串');
 check(Mailbox::displayAddresses('"Raj, K" <raj@acme.in>, info@acme.in, c@c.com') === 'Raj, K、info@acme.in 等 3 人', '列表里显示收件人');
 
+// ---------- 分类、标签筛选、工作台 ----------
+check(Mailbox::category(['subject' => 'Re: Quotation for LED']) === 'quote' && Mailbox::category(['subject' => 'Newsletter: price drop']) === 'promotion'
+    && Mailbox::category(['subject' => '寄样确认']) === 'sample' && Mailbox::category(['subject' => 'Warranty question']) === 'service'
+    && Mailbox::category(['subject' => 'Hello']) === 'normal' && Mailbox::category(['subject' => 'Hello', 'mail_category' => 'service']) === 'service', '邮件分类：手动分类优先，否则按主题关键词（推广优先于报价）');
+$box = new Mailbox($u($s1));
+$all = $box->list('inbox', [])['rows'];
+$byCat = [];
+foreach ($all as $r) {
+    $byCat[$r['category']][] = (int) $r['id'];
+}
+$cc = $box->categoryCounts('inbox', []);
+$okCats = $cc['total'] === count($all);
+foreach (array_keys(Mailbox::CATEGORIES) as $cat) {
+    $listed = $ids($box->list('inbox', ['cat' => $cat]));
+    sort($listed);
+    $expect = $byCat[$cat] ?? [];
+    sort($expect);
+    $okCats = $okCats && $cc[$cat] === count($expect) && $listed === $expect;
+}
+check($okCats && $cc['quote'] >= 1, '分类数量、分类筛选与逐封判断一致（SQL 与 PHP 规则相同）');
+$box->linkCustomer($m1, $custA);
+check($ids($box->list('inbox', ['cust' => 'linked'])) === [$m1] && !in_array($m1, $ids($box->list('inbox', ['cust' => 'unlinked'])), true), '标签：客户邮件 / 未关联');
+check($ids($box->list('inbox', ['customer' => $custA])) === [$m1], '按客户看邮件');
+check($ids($box->list('inbox', ['att' => '1'])) === [$m1], '标签：有附件');
+$pdo->prepare('UPDATE crm_mails SET is_read = 0, is_replied = 0, received_at = ? WHERE id = ?')->execute([$t(600), $m1]);
+$dash = (new \Artdon\Centers\Mail\MailDashboard($u($s1)))->data();
+check(count($dash['days']) === 7 && end($dash['days']) === date('Y-m-d') && count($dash['kpi']['in_daily']) === 7, '工作台：最近 7 天按天统计');
+$todayIn = (int) $pdo->query("SELECT COUNT(*) FROM crm_mails WHERE user_id = {$s1} AND folder = 'inbox' AND is_deleted = 0 AND SUBSTR(COALESCE(received_at, created_at), 1, 10) = '" . date('Y-m-d') . "'")->fetchColumn();
+check($dash['kpi']['today'] === $todayIn && $dash['kpi']['unread'] === $box->counts()['inbox'] && $dash['kpi']['unread_customer'] === 1, '工作台：今日收信、未读、未读客户来信');
+check(array_map('intval', array_column($dash['customer_waiting'], 'id')) === [$m1], '工作台：客户来信还没回复');
+check(array_map('intval', array_column($dash['top_customers'], 'id')) === [$custA] && $dash['top_customers'][0]['received'] === 1 && $dash['top_customers'][0]['percent'] === 100, '工作台：往来最多的客户');
+check(array_map('intval', array_column($dash['maybe_customer'], 'id')) === [$m5] && $dash['maybe_customer'][0]['suggestion']['id'] === $custA, '工作台：可能是客户的来信（按域名）');
+check(count($dash['accounts']) === 1 && $dash['accounts'][0]['state'][1] === 'warn' && $dash['accounts'][0]['received_30'] >= 1, '工作台：邮箱状态和 30 天收发');
+$dashOther = (new \Artdon\Centers\Mail\MailDashboard($u($auditor), $s1))->data();
+check($dashOther['kpi']['unread'] === $dash['kpi']['unread'] && $dashOther['maybe_customer'] !== null, '有 mail.view_all 可以看别人的工作台');
+expect_throws(PermissionException::class, static function () use ($u, $plain, $s1): void {
+    new \Artdon\Centers\Mail\MailDashboard($u($plain), $s1);
+}, '没有 mail.view_all 不能看别人的工作台');
+check(\Artdon\Centers\Mail\MailDashboard::bars([0, 5, 10]) === [0, 50, 100] && \Artdon\Centers\Mail\MailDashboard::bars([0, 0]) === [0, 0], '柱状图高度');
+$st = (new MailAccounts($u($admin)))->stats($s1);
+check(isset($st[$a1]) && $st[$a1]['received'] >= 1 && $st[$a1]['unread'] >= 1, '邮箱设置：每个邮箱的 30 天收发和未读');
+check(MailAccounts::state(['is_enabled' => 0])[1] === 'muted' && MailAccounts::state(['is_enabled' => 1, 'sync_error' => 'x'])[1] === 'bad' && MailAccounts::state(['is_enabled' => 1, 'last_sync_time' => '2026-01-01'])[1] === 'good', '邮箱状态');
+
 @unlink($att1);
 @unlink($img);
 @unlink($outside);
