@@ -117,6 +117,7 @@ contract_tests=(
   centers/system/tests/accounts_contract.php
   centers/system/tests/permission_center_contract.php
   centers/system/tests/people_contract.php
+  centers/system/tests/requests_contract.php
 )
 
 contract_passed=0

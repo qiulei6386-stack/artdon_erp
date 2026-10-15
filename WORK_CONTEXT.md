@@ -1,5 +1,15 @@
 # Artdon ERP 工作上下文
 
+## 2026-10-15：权限中心第 3 批 · 权限申请与临时授权（新系统）
+
+- 上一步部署情况：PR #14（人员权限）合并后自动部署成功，服务器 `715de44`。
+- 本次完成：`centers/system/requests.php`，分类：我的申请（所有人）、待我审批（有审批权限的人）、全部申请（可按状态筛选）、临时授权（撤销、延长）。申请：只能选自己还没有的权限，填原因、紧急程度、需要天数（1/3/7/30/90）；同一权限同时只能有一个待审批申请；可取消自己的待审批申请。批准生成临时授权（1-90 天，永久仅超管），拒绝须填原因，撤销须填原因，延长到指定日期当天结束且最多到今天起 90 天内。过期按时间判断，不改数据。导航“系统”下新增“权限申请”（所有人可见），权限中心“申请与授权”标签可用。接口加入 request_submit / request_cancel / request_approve / request_reject / grant_revoke / grant_extend。
+- 审批规则（按权限判断，不按角色名称）：不能批自己的；超管和 `dangerous.permission_admin` 可批全部；`permission_request.approve_all` 可批全部普通权限；`permission_request.approve_department` 只能批本部门普通权限；后两者只能批自己也有的权限；高风险（风险等级 high/dangerous 或 `dangerous.` 开头）只能由超管或权限管理员批，且必须写审批备注。撤销和延长：超管、权限管理员或 `permission_request.revoke`。所有操作写 `crm_permission_request_logs` 和 `crm_audit_logs`。
+- 暂未做：提交申请后给审批人发通知（新系统还没有通知功能，审批人需打开“待我审批”查看）。
+- 修改文件：`centers/_base/src/Nav.php`、`centers/system/{requests.php,api.php}`、`centers/system/src/{RequestService,PermissionTabs}.php`、`centers/system/tests/requests_contract.php`、`centers/README.md`、`tools/ci_php_checks.sh`、本文件。
+- 检查结果：`requests_contract.php` 45 项及前四组契约测试全部通过；本地 SQLite + 无头浏览器五组共 100 项全部通过（申请与授权 19 项）。`tools/ci_php_checks.sh`：语法 696 个文件 0 失败，契约 80 项全部通过；`tools/ci_js_checks.sh` 26 项通过。
+- 尚未完成 / 下一步：系统中心第 4 步设置中心。
+
 ## 2026-10-15：权限中心第 2 批 · 人员权限（新系统）
 
 - 上一步部署情况：PR #13（权限中心第 1 批）合并后自动部署成功，服务器 `cf5f791`。
