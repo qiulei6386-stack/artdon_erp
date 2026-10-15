@@ -1,5 +1,19 @@
 # Artdon ERP 工作上下文
 
+## 2026-10-15：客户中心第一批（新系统）
+
+- 上一步：PR #19 记录第二批范围，服务器 `649701d`。
+- 本次完成（按已确认的 9 项决定）：
+  - 列表 `centers/customer/index.php`：我的客户、全部客户、公海、已删除（按权限显示），搜索（名称、代码、邮箱、电话、联系人）、国家（代码/中文/英文都能匹配旧数据）、等级、阶段、负责人、7/15/30 天未跟进与从未跟进、新增时间、没有联系人；批量分配、批量转入公海；公海领取；已删除恢复。
+  - 详情 `centers/customer/view.php`：概览（资料、负责人、资料还缺、最近跟进）、联系人（新增、编辑、删除、主联系人、已离职）、跟进（只读）、日志（新旧系统写的客户日志）；编辑、分配、转入公海、删除、领取、恢复。
+  - 新建：先查重（和全部未删除客户比对，规则同旧系统，公共邮箱如 gmail 不按域名算重复），有疑似重复先列出让用户确认；再按正式库 `crm_rule_configs` 的准入规则和查重规则决定直接建成正式客户或进入暂存池（`crm_lead_pool`，资料格式旧系统能读，暂存池处理第二批前仍在旧系统做）。同名、客户代码不能重复。
+  - 编辑不能改负责人；分配要 `customer.assign`，替换原负责人并通知；转入公海清掉全部负责人；公海客户要先领取才能编辑和维护联系人；删除要填原因，只做软删除和恢复。
+  - 客户数据写正式库已有表：crm_customers、crm_customer_addresses（主地址同步）、crm_customer_owners、source_tags、promotion_channels、promotion_status、protection、crm_contacts；日志写 crm_logs（前缀“[新系统]”）、crm_customer_timeline、crm_sensitive_audit_logs、crm_audit_logs。
+  - 底座：`Layout` 支持页面样式表 `styles`；`base.js` 接口表单成功时触发可取消的 `centers:api-success` 事件；导航“客户中心”可用。
+- 修改文件：`centers/customer/**`（新）、`centers/_base/src/{Layout,Nav}.php`、`centers/_base/assets/base.js`、`centers/system/tests/stage1_contract.php`、`centers/README.md`、`tools/ci_php_checks.sh`、本文件。
+- 检查结果：`customer_contract.php` 99 项通过（含查全部客户、公共邮箱、准入规则各模式、可见范围、公海、分配、删除恢复、联系人）；本地无头浏览器客户中心 39 项及其他七组全部通过；`tools/ci_php_checks.sh` 契约 83 项全部通过；`tools/ci_js_checks.sh` 26 项通过。
+- 尚未完成 / 下一步：客户中心第二批：暂存池处理、合并、分组管理、导入导出、名片识别、多地址、聊天群、关系图谱。
+
 ## 2026-10-15：客户中心范围补充（无代码修改）
 
 - 上一步：PR #18 底座收尾，服务器 `4c25a7e`。

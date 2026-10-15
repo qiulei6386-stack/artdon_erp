@@ -20,7 +20,7 @@ final class Nav
                 'key' => 'centers',
                 'title' => '',
                 'items' => [
-                    ['key' => 'customer', 'label' => '客户中心', 'icon' => 'customers', 'href' => '', 'permission' => 'customer.view', 'ready' => false],
+                    ['key' => 'customer', 'label' => '客户中心', 'icon' => 'customers', 'href' => Url::center('customer', 'index.php'), 'permission' => 'customer.view', 'ready' => true],
                     ['key' => 'promotion', 'label' => '推广中心', 'icon' => 'promotion', 'href' => '', 'permission' => 'promotion.view', 'ready' => false],
                     ['key' => 'mail', 'label' => '邮箱系统', 'icon' => 'mail', 'href' => '', 'permission' => 'mail.view', 'ready' => false],
                     ['key' => 'followup', 'label' => '业务跟进', 'icon' => 'followup', 'href' => '', 'permission' => 'visit.view', 'ready' => false],

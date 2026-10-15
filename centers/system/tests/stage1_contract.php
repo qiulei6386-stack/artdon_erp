@@ -155,7 +155,8 @@ foreach ($groups as $group) {
 check(isset($keys['customer'], $keys['followup'], $keys['promotion']) && !isset($keys['mail']), '导航只显示有权限的中心');
 check(isset($keys['profile']) && $keys['profile']['active'] === true && $keys['profile']['ready'] === true, '个人账号所有人可见并标为当前页');
 check(!isset($keys['accounts']) && !isset($keys['settings']), '没有权限时不显示账号管理和设置中心');
-check($keys['customer']['ready'] === false && $keys['customer']['href'] === '', '还没做好的模块标为建设中，不能点击');
+check($keys['followup']['ready'] === false && $keys['followup']['href'] === '', '还没做好的模块标为建设中，不能点击');
+check($keys['customer']['ready'] === true && $keys['customer']['href'] !== '', '客户中心已可用');
 
 // ---------- 个人资料 ----------
 centers_test_reset();

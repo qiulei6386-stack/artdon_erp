@@ -120,6 +120,7 @@ contract_tests=(
   centers/system/tests/requests_contract.php
   centers/system/tests/settings_contract.php
   centers/_base/tests/services_contract.php
+  centers/customer/tests/customer_contract.php
 )
 
 contract_passed=0
