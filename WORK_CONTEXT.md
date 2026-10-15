@@ -1,5 +1,16 @@
 # Artdon ERP 工作上下文
 
+## 2026-10-15：权限中心第 1 批 · 部门、角色、角色权限矩阵（新系统）
+
+- 上一步部署情况：PR #12（账号管理）合并后自动部署成功，服务器 `71a4da2`。
+- 权限中心分三批：① 部门与角色（本次）② 人员权限 ③ 权限申请与临时授权。用户已知悉：新系统审批规则按权限判断（审批全部 / 审批本部门 / 高风险需权限管理员 / 永久授权仅超管），不再按角色名称写死。
+- 本次完成：`centers/system/roles.php`（左侧角色列表含账号数，右侧角色信息与权限矩阵：按模块分组、模块中文名、风险标签、搜索、只看已勾选、模块全选、计数、未保存提示、离开页面提醒），`centers/system/departments.php`（部门列表含编码、负责人、账号数、排序、状态；新建、编辑、停用、启用），权限中心标签栏（人员权限、申请与授权显示“建设中”），导航“权限中心”可用。接口加入 role_create / role_update / role_disable / role_enable / role_permissions_save / department_create / department_update / department_disable / department_enable。
+- 规则：查看 `users.view`；角色增改停启 `users.manage_roles`；改角色权限 `dangerous.permission_admin`；部门增改停启 `users.manage_departments`。super_admin 角色只有超管能改；非超管只能给角色加自己也有的权限（可以去掉自己没有的）；有账号在用的角色、有账号的部门不能停用；角色编码、部门编码建好后不能改；部门编码留空自动生成 `dept_xxxxxx`。所有操作写 `crm_audit_logs`，角色权限记录增加和去掉的项。
+- 底座：`[hidden]` 强制隐藏（修复带 display 样式的元素用 hidden 属性藏不住）；表单数组字段 `name[]`；`data-array` 让全不选时也提交空数组；接口返回 `redirect` 时跳转；`Layout::start` 支持 `scripts`；`Url::centerAsset()`。
+- 修改文件：`centers/_base/**`、`centers/system/{roles.php,departments.php,api.php}`、`centers/system/src/{RoleService,DepartmentService,PermissionTabs}.php`、`centers/system/assets/roles.js`、`centers/system/tests/permission_center_contract.php`、`centers/README.md`、`tools/ci_php_checks.sh`、本文件。
+- 检查结果：`permission_center_contract.php` 36 项、`accounts_contract.php` 48 项、`stage1_contract.php` 62 项全部通过；本地 SQLite + 无头浏览器：权限中心 23 项、账号管理 21 项、登录与个人账号 23 项全部通过；1440、1366、手机宽截图核对。`tools/ci_php_checks.sh`：语法 690 个文件 0 失败，契约 78 项全部通过；`tools/ci_js_checks.sh` 26 项通过。
+- 尚未完成 / 下一步：权限中心第 2 批人员权限；第 3 批申请与授权；设置中心。
+
 ## 2026-10-15：系统中心第 2 步 · 账号管理（新系统）
 
 - 上一步部署情况：PR #11（新系统独立版本）合并后自动部署成功，服务器 `e455c43`；用户在服务器运行 `php centers/_base/tools/init_config.php`，生成 `centers/config.php`（库 `artdon_new_erp`，17 个账号，属主 www，权限 640），工作区干净。

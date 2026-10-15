@@ -193,7 +193,18 @@
       event.preventDefault();
       clearErrors(form);
       var body = {};
-      new FormData(form).forEach(function (value, key) { body[key] = value; });
+      new FormData(form).forEach(function (value, key) {
+        if (key.slice(-2) === '[]') {
+          var name = key.slice(0, -2);
+          (body[name] = body[name] || []).push(value);
+        } else {
+          body[key] = value;
+        }
+      });
+      form.querySelectorAll('[data-array]').forEach(function (el) {
+        var name = el.getAttribute('data-array');
+        if (!body[name]) body[name] = [];
+      });
       var button = form.querySelector('button[type="submit"]');
       if (button) { button.disabled = true; button.setAttribute('aria-busy', 'true'); }
       api(form.getAttribute('action'), { method: 'POST', body: body }).then(function (result) {
@@ -208,7 +219,8 @@
           showSecret(result.message || '操作成功', result.data.password, '这是新密码，只显示这一次。请复制后发给对方，对方首次登录时需要修改。');
           return;
         }
-        window.location.reload();
+        var redirect = result.data && result.data.redirect;
+        if (redirect) window.location.href = redirect; else window.location.reload();
       });
     });
   }

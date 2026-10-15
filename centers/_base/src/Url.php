@@ -43,6 +43,15 @@ final class Url
         return self::app('centers/_base/assets/' . $path) . '?v=' . $version;
     }
 
+    /** 某个中心自己的静态资源（centers/<中心>/assets/），带版本号。 */
+    public static function centerAsset(string $center, string $path): string
+    {
+        $path = ltrim($path, '/');
+        $file = ARTDON_CENTERS_ROOT . '/' . $center . '/assets/' . $path;
+        $version = is_file($file) ? (string) filemtime($file) : '0';
+        return self::center($center, 'assets/' . $path) . '?v=' . $version;
+    }
+
     /** 当前请求的地址（路径 + 查询串），用于登录后跳回。 */
     public static function current(): string
     {
