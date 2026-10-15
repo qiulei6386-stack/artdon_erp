@@ -15,7 +15,7 @@ centers/
     assets/            base.css（界面样式变量和组件）、base.js（接口调用、提示）
     tools/             init_config.php（服务器上一次性生成 config.php）
     tests/harness.php  契约测试夹具（内存 SQLite，表结构取自 sql/*.sql）
-  system/              系统中心：登录、个人账号、账号管理、权限中心（角色、部门）；接着做人员权限、申请与授权、设置中心
+  system/              系统中心：登录、个人账号、账号管理、权限中心（角色、部门、人员权限）；接着做申请与授权、设置中心
   customer/ mail/ promotion/ followup/   以后按顺序新建
 ```
 
@@ -48,4 +48,4 @@ cd /www/wwwroot/Artdon/artdon_erp && php centers/_base/tools/init_config.php
 - 登录：`/artdon_erp/centers/system/login.php`
 - 个人账号：`/artdon_erp/centers/system/profile.php`
 - 账号管理：`/artdon_erp/centers/system/accounts.php`（需要 users.view）
-- 权限中心 · 角色与权限：`/artdon_erp/centers/system/roles.php`；部门：`/artdon_erp/centers/system/departments.php`（需要 users.view）
+- 权限中心 · 角色与权限：`/artdon_erp/centers/system/roles.php`；部门：`/artdon_erp/centers/system/departments.php`；人员权限：`/artdon_erp/centers/system/people.php`（需要 users.view）
