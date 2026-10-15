@@ -1,5 +1,16 @@
 # Artdon ERP 工作上下文
 
+## 2026-10-15：系统中心第 2 步 · 账号管理（新系统）
+
+- 上一步部署情况：PR #11（新系统独立版本）合并后自动部署成功，服务器 `e455c43`；用户在服务器运行 `php centers/_base/tools/init_config.php`，生成 `centers/config.php`（库 `artdon_new_erp`，17 个账号，属主 www，权限 640），工作区干净。
+- 本次完成：新增账号管理页 `centers/system/accounts.php` 与接口 `centers/system/api.php`。功能：账号列表（按状态标签、搜索账号/姓名/邮箱/电话、部门、角色筛选，待审核排最前，每页 50 个），新建（不填密码自动生成 10 位强密码，只显示一次；新账号为正常状态、首次登录须改密码），编辑资料/部门/角色，审核通过（必须分配部门和角色），拒绝（必须填原因），停用，启用（同时清除登录失败锁定），解除临时锁定，重置密码（可指定或自动生成，重置后须改密码并解锁）。写 `crm_audit_logs` 和 `crm_user_approval_logs`。
+- 权限：查看 `users.view`；新建和改基本资料 `users.create`；改部门 `users.assign_department`；改角色 `users.assign_role`；审核 `users.approve`；拒绝 `users.reject`；停用 `users.disable`；启用和解锁 `users.enable`；重置密码 `users.reset_password`。只有部分权限时只改得了对应字段。非超级管理员不能管理超级管理员账号；不能停用自己；页面上不能设置超级管理员。
+- 与旧账号管理的差别：新建账号**不改动任何角色的权限**（旧代码每次新建都会清空并重写 6 个系统角色的权限），**不给账号写个人权限**，权限统一跟着角色走；部门只能从已有部门选，不能手输新名字自动建部门。
+- 底座新增：`Api`（接口路由：登录、POST 必带 CSRF、权限、异常转统一错误，校验错误返回 422 并带 data.errors）、`PermissionException`、`NotFoundException`、`ErrorCode::BAD_REQUEST`；`Form::textarea()` 及字段 id 前缀；`base.js` 弹窗（`data-open-dialog` + `data-fill`）、接口表单（`data-api`，错误显示到对应字段、成功后刷新、新密码弹窗）；`base.css` 弹窗、状态标签页、筛选、分页、行内菜单样式。导航“账号管理”改为可用。
+- 修改文件：`centers/_base/**`、`centers/system/accounts.php`、`centers/system/api.php`、`centers/system/src/AccountService.php`、`centers/system/tests/accounts_contract.php`、`centers/README.md`、`tools/ci_php_checks.sh`、本文件。
+- 检查结果：`accounts_contract.php` 48 项通过，`stage1_contract.php` 62 项通过；本地 SQLite + 无头浏览器 21 项通过（新建重复报错、生成密码弹窗、审核、停用后不能登录、启用、重置密码后引导改密码、编辑、搜索、状态筛选、接口无 CSRF 拒绝、无权限看不到入口且接口 403、控制台无报错），1366 宽和手机宽截图核对。`tools/ci_php_checks.sh`：语法 684 个文件 0 失败，契约 77 项全部通过；`tools/ci_js_checks.sh` 26 项通过。
+- 尚未完成 / 下一步：第 3 步权限中心（角色、角色权限、个人授权、临时授权、权限申请审批、部门管理）；第 4 步设置中心。新系统暂无自助注册页（旧系统注册的待审核账号可在这里审核）。
+
 ## 2026-10-15：新系统改为完全独立（不引用旧代码、不共用登录）
 
 - 用户决定：新系统只用数据库里的数据，不调用旧系统任何代码；新旧系统**不共用登录**；新系统写完后旧代码全部删除。上一条记录里“调用 includes/ 函数、会话与旧系统通用”的做法作废。

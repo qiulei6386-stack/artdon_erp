@@ -10,11 +10,12 @@ final class Form
 {
     /**
      * @param array<string, string> $errors 字段名 => 错误
-     * @param array<string, mixed> $attrs type、required、autocomplete、hint、readonly、maxlength、placeholder、autofocus
+     * @param array<string, mixed> $attrs type、required、autocomplete、hint、readonly、maxlength、placeholder、autofocus、
+     *                                    prefix（同一页面多个表单有同名字段时，用来区分 id）
      */
     public static function input(string $name, string $label, string $value, array $errors = [], array $attrs = []): string
     {
-        $id = 'f-' . $name;
+        $id = (string) ($attrs['prefix'] ?? 'f') . '-' . $name;
         $error = $errors[$name] ?? '';
         $hint = (string) ($attrs['hint'] ?? '');
         $describedBy = [];
@@ -64,7 +65,7 @@ final class Form
      */
     public static function select(string $name, string $label, array $options, string $selected, array $errors = [], array $attrs = []): string
     {
-        $id = 'f-' . $name;
+        $id = (string) ($attrs['prefix'] ?? 'f') . '-' . $name;
         $error = $errors[$name] ?? '';
         $hint = (string) ($attrs['hint'] ?? '');
         $html = '<div class="field' . ($error !== '' ? ' has-error' : '') . '">';
@@ -83,6 +84,25 @@ final class Form
         }
         if ($error !== '') {
             $html .= '<p class="field-error" id="' . Layout::e($id) . '-error">' . Layout::e($error) . '</p>';
+        }
+        return $html . '</div>';
+    }
+
+    /** 多行文字。 @param array<string, mixed> $attrs required、hint、maxlength、placeholder、prefix */
+    public static function textarea(string $name, string $label, string $value, array $errors = [], array $attrs = []): string
+    {
+        $id = (string) ($attrs['prefix'] ?? 'f') . '-' . $name;
+        $error = $errors[$name] ?? '';
+        $html = '<div class="field' . ($error !== '' ? ' has-error' : '') . '">';
+        $html .= '<label class="field-label" for="' . Layout::e($id) . '">' . Layout::e($label) . (!empty($attrs['required']) ? '<span class="field-req" aria-hidden="true">*</span>' : '') . '</label>';
+        $html .= '<textarea class="input" id="' . Layout::e($id) . '" name="' . Layout::e($name) . '"' . (!empty($attrs['required']) ? ' required' : '')
+            . (isset($attrs['maxlength']) ? ' maxlength="' . Layout::e($attrs['maxlength']) . '"' : '')
+            . (isset($attrs['placeholder']) ? ' placeholder="' . Layout::e($attrs['placeholder']) . '"' : '') . '>' . Layout::e($value) . '</textarea>';
+        if (!empty($attrs['hint'])) {
+            $html .= '<p class="field-hint">' . Layout::e((string) $attrs['hint']) . '</p>';
+        }
+        if ($error !== '') {
+            $html .= '<p class="field-error">' . Layout::e($error) . '</p>';
         }
         return $html . '</div>';
     }
