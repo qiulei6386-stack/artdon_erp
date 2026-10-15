@@ -124,6 +124,7 @@ contract_tests=(
   centers/customer/tests/leads_merge_contract.php
   centers/customer/tests/details_contract.php
   centers/customer/tests/import_export_contract.php
+  centers/mail/tests/mailbox_contract.php
 )
 
 contract_passed=0
