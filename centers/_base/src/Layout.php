@@ -46,7 +46,8 @@ final class Layout
     private static $styles = [];
 
     /**
-     * @param array{title?: string, nav?: string, crumbs?: array<string, ?string>, scripts?: list<string>, styles?: list<string>} $opts
+     * @param array{title?: string, nav?: string, crumbs?: array<string, ?string>, scripts?: list<string>, styles?: list<string>, subnav?: list<array{label: string, href: string, active?: bool, count?: int}>} $opts
+     *   subnav：当前中心的二级导航，显示在侧栏当前中心下面
      */
     public static function start(array $opts): void
     {
@@ -71,9 +72,19 @@ final class Layout
                     . '<span class="side-label">' . self::e($item['label']) . '</span>'
                     . (empty($item['ready']) ? '<span class="side-tag">建设中</span>' : '');
                 if (!empty($item['ready'])) {
-                    echo '<a class="' . $class . '" href="' . self::e($item['href']) . '"' . (!empty($item['active']) ? ' aria-current="page"' : '') . '>' . $inner . '</a>';
+                    echo '<a class="' . $class . '" href="' . self::e($item['href']) . '"' . (!empty($item['active']) && empty($opts['subnav']) ? ' aria-current="page"' : '') . '>' . $inner . '</a>';
                 } else {
                     echo '<span class="' . $class . '" aria-disabled="true">' . $inner . '</span>';
+                }
+                if (!empty($item['active']) && !empty($opts['subnav']) && is_array($opts['subnav'])) {
+                    echo '<div class="side-sub">';
+                    foreach ($opts['subnav'] as $sub) {
+                        $on = !empty($sub['active']);
+                        $count = (int) ($sub['count'] ?? 0);
+                        echo '<a class="side-sub-link' . ($on ? ' is-active' : '') . '" href="' . self::e((string) $sub['href']) . '"' . ($on ? ' aria-current="page"' : '') . '><span>' . self::e((string) $sub['label']) . '</span>'
+                            . ($count > 0 ? '<span class="side-sub-count">' . ($count > 999 ? '999+' : $count) . '</span>' : '') . '</a>';
+                    }
+                    echo '</div>';
                 }
             }
             echo '</nav>';

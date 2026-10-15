@@ -1,17 +1,18 @@
 <?php
 declare(strict_types=1);
 
-/** 邮箱：文件夹、搜索、邮件列表、批量标记。 */
+/** 邮件工作台：指标、要处理的邮件、往来最多的客户、分类分布、邮箱状态。 */
 
 require_once __DIR__ . '/bootstrap.php';
 
 use Artdon\Centers\Base\Auth;
 use Artdon\Centers\Base\Layout;
-use Artdon\Centers\Base\Pager;
 use Artdon\Centers\Base\PermissionException;
 use Artdon\Centers\Base\Url;
+use Artdon\Centers\Customer\Country;
 use Artdon\Centers\Mail\MailAccounts;
 use Artdon\Centers\Mail\Mailbox;
+use Artdon\Centers\Mail\MailDashboard;
 use Artdon\Centers\Mail\MailView;
 
 $user = Auth::requirePage();
@@ -19,170 +20,228 @@ Auth::requirePermissionPage('mail.view');
 $selfId = (int) $user['id'];
 $ownerId = (int) ($_GET['user_id'] ?? 0) ?: $selfId;
 try {
-    $box = new Mailbox($user, $ownerId);
+    $dash = new MailDashboard($user, $ownerId);
 } catch (PermissionException $e) {
     Layout::forbidden('mail.view_all');
     return;
 }
+$box = $dash->mailbox();
 $isSelf = $box->isSelf();
-$str = static function (string $key): string {
-    $v = $_GET[$key] ?? '';
-    return is_string($v) ? trim($v) : '';
-};
-$folder = $str('folder');
-if (!isset(Mailbox::FOLDERS[$folder])) {
-    $folder = 'inbox';
-}
-$filters = ['q' => $str('q'), 'account' => (int) ($_GET['account'] ?? 0), 'read' => $str('read'), 'period' => $str('period')];
+$owner = $isSelf ? 0 : $ownerId;
+$accountsSvc = new MailAccounts($user);
+$canAccounts = $accountsSvc->canManage($selfId) || $accountsSvc->canManageOthers();
 $accounts = $box->accounts();
-$result = $box->list($folder, $filters, (int) ($_GET['page'] ?? 1));
-$counts = $box->counts($filters['account']);
-$self = Url::center('mail', 'index.php');
+$names = $accountsSvc->ownerNames();
+$ownerName = $isSelf ? Auth::displayName($user) : ($names[$ownerId] ?? ('#' . $ownerId));
 $api = Url::center('mail', 'api.php');
-$base = array_filter(['user_id' => $isSelf ? 0 : $ownerId, 'folder' => $folder], static function ($v): bool {
-    return $v !== 0 && $v !== '';
-});
-$link = static function (array $changes) use ($filters, $self, $base): string {
-    $query = array_filter(array_merge($base, $filters, $changes), static function ($v): bool {
+$inbox = static function (array $q = []) use ($owner): string {
+    $q = array_filter($q + ['user_id' => $owner], static function ($v): bool {
         return $v !== '' && $v !== 0 && $v !== null;
     });
-    return $self . ($query ? '?' . http_build_query($query) : '');
+    return Url::center('mail', 'inbox.php') . ($q ? '?' . http_build_query($q) : '');
 };
-$here = $link(['page' => $result['page'] > 1 ? $result['page'] : 0]);
-$filtered = $filters['q'] !== '' || $filters['read'] !== '' || $filters['period'] !== '';
-$canViewAll = Mailbox::canViewAll($user);
-$accountManager = new MailAccounts($user);
-$ownerName = $isSelf ? '' : ($accountManager->ownerNames()[$ownerId] ?? ('#' . $ownerId));
-$accountEmails = [];
-foreach ($accounts as $a) {
-    $accountEmails[(int) $a['id']] = (string) $a['email_address'];
-}
-$bulk = $isSelf && $result['rows'];
-$canDelete = $box->can('mail.delete');
+$d = $accounts ? $dash->data() : null;
+$dayLabels = $d ? array_map(static function (string $day): string {
+    return date('n月j日', (int) strtotime($day));
+}, $d['days']) : [];
 
 Layout::start([
-    'title' => '邮箱',
+    'title' => '邮件工作台',
     'nav' => 'mail',
-    'crumbs' => ['邮箱' => $self, Mailbox::FOLDERS[$folder] => null],
+    'crumbs' => ['邮箱系统' => Url::center('mail', 'index.php'), '邮件工作台' => null],
     'styles' => [Url::centerAsset('mail', 'mail.css')],
     'scripts' => [Url::centerAsset('mail', 'mail.js')],
+    'subnav' => MailView::subnav('dashboard', $owner, $d ? (int) $d['kpi']['unread'] : 0, $canAccounts),
 ]);
 ?>
 <div class="page-head">
   <div>
-    <h1 class="page-title"><?= $isSelf ? '邮箱' : Layout::e($ownerName) . ' 的邮件' ?></h1>
-    <p class="page-sub"><?php if (!$isSelf): ?>你在查看别人的邮件，只能看不能改，每次打开邮件都会记录在日志里。<?php elseif ($accounts): ?>收信由服务器每隔几分钟自动同步。<?php else: ?>还没有绑定邮箱。<?php endif; ?></p>
+    <h1 class="page-title"><?= $isSelf ? '邮件工作台' : Layout::e($ownerName) . ' 的邮件工作台' ?></h1>
+    <p class="page-sub">
+      <?php if (!$isSelf): ?>你在查看别人的邮件，只能看不能改，打开邮件会记录在日志里。
+      <?php elseif ($accounts): ?><?= count($accounts) ?> 个邮箱 · 收信由服务器每隔几分钟自动同步<?php $last = max(array_map(static function ($a) { return (string) $a['last_sync_time']; }, $accounts)); ?><?= $last !== '' ? ' · 最近同步 ' . Layout::e(MailView::ago($last)) : '' ?>
+      <?php else: ?>还没有绑定邮箱。<?php endif; ?>
+    </p>
   </div>
   <div class="page-actions">
-    <?php if ($canViewAll): ?><?= MailView::ownerSelect($accountManager->ownerNames(), $selfId, $ownerId, $self) ?><?php endif; ?>
-    <?php if ($accountManager->canManage($selfId) || $accountManager->canManageOthers()): ?><a class="btn" href="<?= Layout::e(Url::center('mail', 'accounts.php')) ?>">邮箱设置</a><?php endif; ?>
+    <?php if (Mailbox::canViewAll($user)): ?><?= MailView::ownerSelect($names, $selfId, $ownerId, Url::center('mail', 'index.php')) ?><?php endif; ?>
+    <?php if ($accounts): ?><a class="btn btn-primary" href="<?= Layout::e($inbox()) ?>">进入收件箱</a><?php endif; ?>
   </div>
 </div>
 
-<?php if (!$accounts && $isSelf): ?>
+<?php if (!$d): ?>
+<section class="empty">
+  <div class="empty-title"><?= $isSelf ? '先绑定一个邮箱' : '这个人还没有绑定邮箱' ?></div>
+  <p class="empty-text">绑定后，这里会显示今天收到的邮件、客户来信、待回复跟进和往来最多的客户。需要邮箱的授权码（不是登录密码），可以在邮箱网页版的设置里生成。</p>
+  <?php if ($isSelf && $accountsSvc->canManage($selfId)): ?><a class="btn btn-primary" href="<?= Layout::e(Url::center('mail', 'accounts.php')) ?>">绑定邮箱</a><?php endif; ?>
+</section>
+<?php else: $k = $d['kpi']; ?>
+
+<div class="kpi-row">
+  <a class="kpi-card" href="<?= Layout::e($inbox(['period' => 'today'])) ?>">
+    <div>
+      <div class="kpi-label">今日收信</div>
+      <div class="kpi-num"><?= (int) $k['today'] ?><small>封</small></div>
+      <?php $diff = $k['today'] - $k['yesterday']; ?>
+      <div class="kpi-trend<?= $diff < 0 ? ' is-muted' : '' ?>"><?= $diff === 0 ? '和昨天一样' : ($diff > 0 ? '↑ 比昨天多 ' . $diff . ' 封' : '↓ 比昨天少 ' . (-$diff) . ' 封') ?></div>
+    </div>
+    <?= MailView::bars($k['in_daily'], $dayLabels) ?>
+  </a>
+  <a class="kpi-card" href="<?= Layout::e($inbox(['read' => 'unread'])) ?>">
+    <div>
+      <div class="kpi-label">收件箱未读</div>
+      <div class="kpi-num is-brand"><?= (int) $k['unread'] ?><small>封</small></div>
+      <div class="kpi-trend<?= $k['unread_customer'] > 0 ? ' is-bad' : ' is-muted' ?>"><?= $k['unread_customer'] > 0 ? '其中客户来信 ' . (int) $k['unread_customer'] . ' 封' : '没有未读的客户来信' ?></div>
+    </div>
+  </a>
+  <a class="kpi-card" href="<?= Layout::e($inbox(['folder' => 'unreplied'])) ?>">
+    <div>
+      <div class="kpi-label">待回复跟进（发出超过 <?= Mailbox::UNREPLIED_DAYS ?> 天）</div>
+      <div class="kpi-num<?= $k['unreplied'] > 0 ? ' is-bad' : '' ?>"><?= (int) $k['unreplied'] ?><small>封</small></div>
+      <div class="kpi-trend<?= $k['unreplied'] > 0 ? ' is-bad' : ' is-muted' ?>"><?= $k['unreplied'] > 0 ? '最早的已经 ' . (int) $k['unreplied_oldest'] . ' 天没回音' : '发出的邮件都有回音' ?></div>
+    </div>
+  </a>
+  <a class="kpi-card" href="<?= Layout::e($inbox(['cust' => 'linked', 'period' => '7d'])) ?>">
+    <div>
+      <div class="kpi-label">本周客户来信</div>
+      <div class="kpi-num"><?= (int) $k['customer_week'] ?><small>封</small></div>
+      <div class="kpi-trend is-muted">30 天内和 <?= (int) $k['customers_30'] ?> 个客户有往来 · 本周发出 <?= (int) $k['sent_week'] ?> 封</div>
+    </div>
+    <?= MailView::bars($k['customer_daily'], $dayLabels, 'is-accent') ?>
+  </a>
+</div>
+
 <section class="card">
-  <div class="empty">
-    <div class="empty-title">先绑定一个邮箱</div>
-    <p class="empty-text">绑定后，这里会显示你的收件箱和已发送邮件。需要邮箱的授权码（不是登录密码），可以在邮箱网页版的设置里生成。</p>
-    <?php if ($accountManager->canManage($selfId)): ?><a class="btn btn-primary" href="<?= Layout::e(Url::center('mail', 'accounts.php')) ?>">绑定邮箱</a><?php endif; ?>
+  <div class="card-head"><h2 class="card-title">最近 30 天收件</h2><span class="muted">共 <?= (int) ($d['categories']['total'] ?? 0) ?> 封 · 点标签直接筛选</span></div>
+  <div class="card-body dim-matrix">
+    <div class="dim-box">
+      <div class="dim-title">1. 邮件分类</div>
+      <div class="pill-wrap">
+        <?php foreach (Mailbox::CATEGORIES as $cat => $label): ?>
+          <a class="pill" href="<?= Layout::e($inbox(['cat' => $cat, 'period' => '30d'])) ?>"><span><?= Layout::e($label) ?></span><b class="pill-count"><?= (int) ($d['categories'][$cat] ?? 0) ?></b></a>
+        <?php endforeach; ?>
+      </div>
+    </div>
+    <div class="dim-box">
+      <div class="dim-title">2. 客户关联</div>
+      <div class="pill-wrap">
+        <a class="pill" href="<?= Layout::e($inbox(['cust' => 'linked', 'period' => '30d'])) ?>"><span>已关联客户</span></a>
+        <a class="pill" href="<?= Layout::e($inbox(['cust' => 'unlinked', 'period' => '30d'])) ?>"><span>未关联客户</span></a>
+        <?php if ($d['maybe_customer']): ?><span class="pill pill-warn"><span><?= count($d['maybe_customer']) ?> 封可能是客户来信</span></span><?php endif; ?>
+      </div>
+    </div>
+    <div class="dim-box">
+      <div class="dim-title">3. 处理状态</div>
+      <div class="pill-wrap">
+        <a class="pill" href="<?= Layout::e($inbox(['read' => 'unread'])) ?>"><span>未读</span><b class="pill-count"><?= (int) $k['unread'] ?></b></a>
+        <a class="pill" href="<?= Layout::e($inbox(['folder' => 'starred'])) ?>"><span>星标</span></a>
+        <a class="pill pill-accent" href="<?= Layout::e($inbox(['folder' => 'unreplied'])) ?>"><span>待回复跟进</span><b class="pill-count"><?= (int) $k['unreplied'] ?></b></a>
+      </div>
+    </div>
+    <div class="dim-box">
+      <div class="dim-title">4. 附件与时间</div>
+      <div class="pill-wrap">
+        <a class="pill" href="<?= Layout::e($inbox(['att' => '1', 'period' => '30d'])) ?>"><span>带附件</span></a>
+        <a class="pill" href="<?= Layout::e($inbox(['period' => 'today'])) ?>"><span>今天</span></a>
+        <a class="pill" href="<?= Layout::e($inbox(['period' => '7d'])) ?>"><span>最近 7 天</span></a>
+      </div>
+    </div>
   </div>
 </section>
-<?php else: ?>
-<div class="mail-layout">
-  <nav class="mail-folders" aria-label="邮件文件夹">
-    <?php foreach (Mailbox::FOLDERS as $key => $label):
-        $n = ['inbox' => $counts['inbox'] ?? 0, 'unread' => $counts['unread'] ?? 0][$key] ?? 0;
-        $on = $key === $folder; ?>
-      <a class="mail-folder<?= $on ? ' is-active' : '' ?>" href="<?= Layout::e($link(['folder' => $key, 'page' => 0])) ?>"<?= $on ? ' aria-current="page"' : '' ?>><span><?= Layout::e($label) ?></span><?php if ($n > 0): ?><span class="mail-count" aria-label="<?= $n ?> 封未读"><?= $n > 999 ? '999+' : $n ?></span><?php endif; ?></a>
-      <?php if ($key === 'sent' || $key === 'unreplied'): ?><span class="mail-folder-sep" aria-hidden="true"></span><?php endif; ?>
-    <?php endforeach; ?>
-    <?php if (count($accounts) > 1): ?>
-      <div class="mail-folder-title">邮箱</div>
-      <a class="mail-folder<?= $filters['account'] === 0 ? ' is-active' : '' ?>" href="<?= Layout::e($link(['account' => 0, 'page' => 0])) ?>"><span>全部邮箱</span></a>
-      <?php foreach ($accounts as $a): ?>
-        <a class="mail-folder<?= $filters['account'] === (int) $a['id'] ? ' is-active' : '' ?>" href="<?= Layout::e($link(['account' => (int) $a['id'], 'page' => 0])) ?>" title="<?= Layout::e((string) $a['email_address']) ?>"><span class="truncate"><?= Layout::e((string) $a['email_address']) ?></span><?php if ((int) $a['is_enabled'] !== 1): ?><span class="badge badge-muted">停用</span><?php endif; ?></a>
+
+<div class="grid-2">
+  <section class="card">
+    <div class="card-head"><h2 class="card-title">客户来信 · 还没回复</h2><a class="card-link" href="<?= Layout::e($inbox(['cust' => 'linked'])) ?>">全部客户来信 →</a></div>
+    <?php if (!$d['customer_waiting']): ?>
+      <div class="card-body muted">最近 14 天的客户来信都处理了。</div>
+    <?php else: ?>
+    <ul class="panel-list">
+      <?php foreach ($d['customer_waiting'] as $m): ?>
+        <li><a class="panel-row<?= (int) $m['is_read'] === 0 ? ' is-unread' : '' ?>" href="<?= Layout::e($inbox(['cust' => 'linked', 'id' => (int) $m['id']])) ?>">
+          <?= MailView::letter((string) $m['from_name'], (string) $m['from_email']) ?>
+          <span class="panel-row-main"><strong><?= (int) $m['is_read'] === 0 ? '<span class="dot-unread" aria-label="未读"></span>' : '' ?><?= Layout::e((string) $m['subject'] !== '' ? (string) $m['subject'] : '（无主题）') ?></strong><small><?= Layout::e((string) $m['customer_name']) ?> · <?= Layout::e((string) ($m['from_name'] ?: $m['from_email'])) ?></small></span>
+          <span class="panel-row-side"><?= MailView::categoryPill((string) $m['category']) ?><?= Layout::e(MailView::ago((string) $m['time'])) ?></span>
+        </a></li>
       <?php endforeach; ?>
+    </ul>
     <?php endif; ?>
-  </nav>
+  </section>
+  <section class="card">
+    <div class="card-head"><h2 class="card-title">待回复跟进 · 发出后没回音</h2><a class="card-link" href="<?= Layout::e($inbox(['folder' => 'unreplied'])) ?>">全部 <?= (int) $k['unreplied'] ?> 封 →</a></div>
+    <?php if (!$d['unreplied']): ?>
+      <div class="card-body muted">没有超过 <?= Mailbox::UNREPLIED_DAYS ?> 天没回音的邮件。</div>
+    <?php else: ?>
+    <ul class="panel-list">
+      <?php foreach ($d['unreplied'] as $m): $days = (int) floor((time() - (int) strtotime((string) $m['time'])) / 86400); ?>
+        <li><a class="panel-row" href="<?= Layout::e($inbox(['folder' => 'unreplied', 'id' => (int) $m['id']])) ?>">
+          <?= MailView::letter(Mailbox::displayAddresses((string) $m['to_emails'], 1), (string) (Mailbox::addresses((string) $m['to_emails'])[0] ?? '')) ?>
+          <span class="panel-row-main"><strong><?= Layout::e((string) $m['subject'] !== '' ? (string) $m['subject'] : '（无主题）') ?></strong><small>发给 <?= Layout::e(Mailbox::displayAddresses((string) $m['to_emails'])) ?><?= !empty($m['linked_customer_name']) ? ' · ' . Layout::e((string) $m['linked_customer_name']) : '' ?></small></span>
+          <span class="panel-row-side"><span class="action-badge <?= $days >= 7 ? 'action-bad' : 'action-warn' ?>"><?= $days ?> 天没回音</span></span>
+        </a></li>
+      <?php endforeach; ?>
+    </ul>
+    <?php endif; ?>
+  </section>
+</div>
 
-  <div class="mail-main">
-    <form class="filters" method="get" action="<?= Layout::e($self) ?>" role="search">
-      <?php foreach ($base as $k => $v): ?><input type="hidden" name="<?= Layout::e($k) ?>" value="<?= Layout::e((string) $v) ?>"><?php endforeach; ?>
-      <?php if ($filters['account']): ?><input type="hidden" name="account" value="<?= (int) $filters['account'] ?>"><?php endif; ?>
-      <label class="sr-only" for="mq">搜索邮件</label>
-      <input class="input input-search" id="mq" type="search" name="q" value="<?= Layout::e($filters['q']) ?>" placeholder="主题、发件人、收件人、正文、附件名">
-      <label class="sr-only" for="mr">已读状态</label>
-      <select class="input select" id="mr" name="read"><option value="">已读未读</option><option value="unread"<?= $filters['read'] === 'unread' ? ' selected' : '' ?>>未读</option><option value="read"<?= $filters['read'] === 'read' ? ' selected' : '' ?>>已读</option></select>
-      <label class="sr-only" for="mp">时间</label>
-      <select class="input select" id="mp" name="period">
-        <?php foreach (Mailbox::PERIODS as $k => $v): ?><option value="<?= Layout::e($k) ?>"<?= $filters['period'] === $k ? ' selected' : '' ?>><?= Layout::e($v) ?></option><?php endforeach; ?>
-      </select>
-      <button type="submit" class="btn btn-sm">搜索</button>
-      <?php if ($filtered): ?><a class="btn btn-sm btn-ghost" href="<?= Layout::e($link(['q' => '', 'read' => '', 'period' => '', 'page' => 0])) ?>">清空</a><?php endif; ?>
-    </form>
-
-    <section class="card">
-      <?php if ($bulk): ?>
-      <div class="bulkbar" data-bulkbar hidden>
-        <span>已选 <strong data-bulk-count>0</strong> 封</span>
-        <form data-api action="<?= Layout::e($api) ?>?action=mail_read" data-bulk-form><input type="hidden" name="read" value="1"><span data-bulk-ids></span><button type="submit" class="btn btn-sm">标为已读</button></form>
-        <form data-api action="<?= Layout::e($api) ?>?action=mail_read" data-bulk-form><input type="hidden" name="read" value="0"><span data-bulk-ids></span><button type="submit" class="btn btn-sm">标为未读</button></form>
-        <form data-api action="<?= Layout::e($api) ?>?action=mail_star" data-bulk-form><input type="hidden" name="starred" value="1"><span data-bulk-ids></span><button type="submit" class="btn btn-sm">加星标</button></form>
-        <?php if ($canDelete): ?>
-          <?php if ($folder === 'deleted'): ?>
-            <form data-api action="<?= Layout::e($api) ?>?action=mail_restore" data-bulk-form><span data-bulk-ids></span><button type="submit" class="btn btn-sm">恢复</button></form>
-          <?php else: ?>
-            <form data-api action="<?= Layout::e($api) ?>?action=mail_delete" data-bulk-form><span data-bulk-ids></span><button type="submit" class="btn btn-sm btn-danger">删除</button></form>
-          <?php endif; ?>
-        <?php endif; ?>
-        <button type="button" class="btn btn-sm btn-ghost" data-bulk-clear>取消选择</button>
-      </div>
-      <?php endif; ?>
-      <?php if (!$result['rows']): ?>
-        <div class="card-body muted">
-          <?php if ($filtered): ?>没有符合条件的邮件。<?php elseif ($folder === 'unreplied'): ?>没有超过 <?= Mailbox::UNREPLIED_DAYS ?> 天未回复的邮件（只看最近 60 天发出的）。<?php else: ?>这里没有邮件。<?php endif; ?>
-        </div>
-      <?php else: ?>
-      <ul class="mail-list" aria-label="邮件列表">
-        <?php foreach ($result['rows'] as $row):
-            $mid = (int) $row['id'];
-            $unread = (int) $row['is_read'] === 0;
-            $who = $row['is_outgoing']
-                ? '发给 ' . (Mailbox::displayAddresses((string) $row['to_emails']) ?: '（无收件人）')
-                : ((string) $row['from_name'] !== '' ? (string) $row['from_name'] : (string) $row['from_email']);
-            $readUrl = Url::center('mail', 'read.php?' . http_build_query(array_filter(['id' => $mid, 'user_id' => $isSelf ? 0 : $ownerId, 'back' => $here]))); ?>
-          <li class="mail-row<?= $unread ? ' is-unread' : '' ?>">
-            <?php if ($bulk): ?><label class="check mail-row-check"><input type="checkbox" value="<?= $mid ?>" data-row-check aria-label="选择：<?= Layout::e((string) $row['subject']) ?>"></label><?php endif; ?>
-            <?php if ($isSelf): ?>
-              <form data-api action="<?= Layout::e($api) ?>?action=mail_star" class="mail-star-form" data-star-form><input type="hidden" name="ids[]" value="<?= $mid ?>"><input type="hidden" name="starred" value="<?= (int) $row['is_starred'] === 1 ? 0 : 1 ?>">
-                <button type="submit" class="mail-star<?= (int) $row['is_starred'] === 1 ? ' is-on' : '' ?>" aria-label="<?= (int) $row['is_starred'] === 1 ? '取消星标' : '加星标' ?>" aria-pressed="<?= (int) $row['is_starred'] === 1 ? 'true' : 'false' ?>">★</button></form>
-            <?php else: ?>
-              <span class="mail-star<?= (int) $row['is_starred'] === 1 ? ' is-on' : '' ?>" aria-hidden="true">★</span>
-            <?php endif; ?>
-            <a class="mail-row-link" href="<?= Layout::e($readUrl) ?>">
-              <span class="mail-who truncate"><?php if ($unread): ?><span class="sr-only">未读，</span><?php endif; ?><?= Layout::e($who) ?></span>
-              <span class="mail-subject">
-                <span class="mail-subject-text"><?= Layout::e((string) $row['subject'] !== '' ? (string) $row['subject'] : '（无主题）') ?></span>
-                <?php if ($row['snippet'] !== ''): ?><span class="mail-snippet"> — <?= Layout::e((string) $row['snippet']) ?></span><?php endif; ?>
-              </span>
-              <span class="mail-tags">
-                <?php if ($folder !== 'inbox' && $folder !== 'sent'): ?><span class="badge badge-muted"><?= $row['is_outgoing'] ? '已发送' : '收件' ?></span><?php endif; ?>
-                <?php if (!empty($row['linked_customer_name'])): ?><span class="badge badge-brand" title="已关联客户"><?= Layout::e((string) $row['linked_customer_name']) ?></span><?php endif; ?>
-                <?php if ((int) $row['is_replied'] === 1 && !$row['is_outgoing']): ?><span class="badge badge-good">已回复</span><?php endif; ?>
-                <?php if (count($accounts) > 1 && $filters['account'] === 0): ?><span class="badge badge-muted"><?= Layout::e(strstr($accountEmails[(int) $row['mail_account_id']] ?? '', '@', true) ?: '') ?></span><?php endif; ?>
-                <?php if ((int) $row['visible_attachments'] > 0): ?><span class="mail-clip" title="<?= (int) $row['visible_attachments'] ?> 个附件" aria-label="<?= (int) $row['visible_attachments'] ?> 个附件">📎</span><?php endif; ?>
-              </span>
-              <time class="mail-time" datetime="<?= Layout::e(str_replace(' ', 'T', (string) $row['time'])) ?>" title="<?= Layout::e((string) $row['time']) ?>"><?= Layout::e(MailView::shortTime((string) $row['time'])) ?></time>
-            </a>
-          </li>
+<div class="gallery">
+  <section class="card">
+    <div class="card-head"><h2 class="card-title">往来最多的客户（30 天）</h2><span class="muted">按收发邮件数排序</span></div>
+    <?php if (!$d['top_customers']): ?>
+      <div class="card-body muted">最近 30 天还没有关联到客户的邮件。在邮件里点“关联客户”后，这里会统计。</div>
+    <?php else: ?>
+    <div class="table-wrap">
+      <table class="table">
+        <thead><tr><th scope="col">客户</th><th scope="col">往来</th><th scope="col">收 / 发</th><th scope="col">最近一封</th><th scope="col"><span class="sr-only">操作</span></th></tr></thead>
+        <tbody>
+        <?php foreach ($d['top_customers'] as $c): ?>
+          <tr>
+            <td><a class="row-link" href="<?= Layout::e(Url::center('customer', 'view.php?id=' . (int) $c['id'])) ?>"><?= Layout::e((string) $c['customer_name']) ?></a><small class="cell-sub"><?= Layout::e(Country::label((string) $c['country'])) ?></small></td>
+            <td><div class="rate"><div class="rate-head"><strong><?= $c['received'] + $c['sent'] ?> 封</strong></div><div class="rate-bar"><span style="width:<?= (int) $c['percent'] ?>%"></span></div></div></td>
+            <td class="nowrap"><span class="action-badge action-info">收 <?= (int) $c['received'] ?></span> <span class="action-badge action-good">发 <?= (int) $c['sent'] ?></span></td>
+            <td class="muted nowrap"><?= Layout::e(MailView::ago((string) $c['last_time'])) ?></td>
+            <td class="cell-actions"><a class="btn btn-sm" href="<?= Layout::e($inbox(['folder' => 'linked', 'customer' => (int) $c['id']])) ?>">看邮件</a></td>
+          </tr>
         <?php endforeach; ?>
-      </ul>
-      <?php endif; ?>
-      <?php if ($result['total'] > 0): ?><div class="card-foot"><?= Pager::render($result, static function (int $p) use ($link): string {
-          return $link(['page' => $p > 1 ? $p : 0]);
-      }, '封') ?></div><?php endif; ?>
-    </section>
-  </div>
+        </tbody>
+      </table>
+    </div>
+    <?php endif; ?>
+  </section>
+
+  <aside class="drawer" aria-label="提醒">
+    <div>
+      <div class="drawer-kicker">可能是客户的来信</div>
+      <p class="muted" style="margin:4px 0 0">发件人的邮箱或域名和客户资料对得上，但还没关联。</p>
+    </div>
+    <?php if (!$d['maybe_customer']): ?>
+      <p class="muted" style="margin:0">最近 14 天没有。</p>
+    <?php else: ?>
+      <div class="drawer-section">
+        <?php foreach ($d['maybe_customer'] as $m): ?>
+          <div class="mini-item">
+            <a class="row-link" href="<?= Layout::e($inbox(['id' => (int) $m['id']])) ?>"><?= Layout::e((string) $m['subject'] !== '' ? (string) $m['subject'] : '（无主题）') ?></a>
+            <small><?= Layout::e((string) ($m['from_name'] ?: $m['from_email'])) ?> · <?= Layout::e(MailView::ago((string) $m['time'])) ?></small>
+            <div class="mini-item-foot"><span class="pill pill-brand"><span><?= Layout::e($m['suggestion']['name']) ?></span></span><small><?= Layout::e($m['suggestion']['reason']) ?></small>
+              <?php if ($box->can('mail.link_customer')): ?>
+                <form data-api action="<?= Layout::e($api) ?>?action=mail_link"><input type="hidden" name="id" value="<?= (int) $m['id'] ?>"><input type="hidden" name="customer_id" value="<?= (int) $m['suggestion']['id'] ?>"><button type="submit" class="btn btn-sm">关联</button></form>
+              <?php endif; ?>
+            </div>
+          </div>
+        <?php endforeach; ?>
+      </div>
+    <?php endif; ?>
+    <div class="drawer-section">
+      <div class="drawer-section-title">邮箱状态</div>
+      <?php foreach ($d['accounts'] as $a): [$sText, $sKind] = $a['state']; ?>
+        <div class="mini-item">
+          <strong class="truncate" style="display:block"><?= Layout::e((string) $a['email_address']) ?></strong>
+          <small><span class="pill <?= ['good' => 'pill-good', 'warn' => 'pill-warn', 'bad' => 'pill-accent'][$sKind] ?? '' ?>" style="height:20px"><?= Layout::e($sText) ?></span> 30 天收 <?= (int) $a['received_30'] ?> · 发 <?= (int) $a['sent_30'] ?><?= $a['last_sync_time'] ? ' · ' . Layout::e(MailView::ago((string) $a['last_sync_time'])) . '同步' : '' ?></small>
+        </div>
+      <?php endforeach; ?>
+      <?php if ($canAccounts): ?><a class="btn btn-sm" href="<?= Layout::e(Url::center('mail', 'accounts.php')) ?>">管理邮箱</a><?php endif; ?>
+    </div>
+  </aside>
 </div>
 <?php endif; ?>
 <?php Layout::end();

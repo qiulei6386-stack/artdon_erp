@@ -20,6 +20,8 @@
     function refresh() {
       var ids = selected();
       bar.hidden = ids.length === 0;
+      var allBox = bar.querySelector('[data-check-all]');
+      if (allBox) { allBox.checked = ids.length === rows.length; allBox.indeterminate = ids.length > 0 && ids.length < rows.length; }
       bar.querySelectorAll('[data-bulk-count]').forEach(function (n) { n.textContent = String(ids.length); });
       bar.querySelectorAll('[data-bulk-ids]').forEach(function (holder) {
         holder.innerHTML = '';
@@ -33,6 +35,8 @@
       });
     }
     rows.forEach(function (c) { c.addEventListener('change', refresh); });
+    var all = bar.querySelector('[data-check-all]');
+    if (all) all.addEventListener('change', function () { rows.forEach(function (c) { c.checked = all.checked; }); refresh(); });
     var clear = bar.querySelector('[data-bulk-clear]');
     if (clear) clear.addEventListener('click', function () { rows.forEach(function (c) { c.checked = false; }); refresh(); });
   }
@@ -174,7 +178,17 @@
     observer.observe(dialog, { attributes: true, attributeFilter: ['open'] });
   }
 
+  /* ---------- 打开的邮件在列表里滚动到可见 ---------- */
+  function initOpenRow() {
+    var row = document.querySelector('.mx-row.is-open');
+    var list = document.querySelector('.mx-rows');
+    if (row && list && list.scrollHeight > list.clientHeight) {
+      list.scrollTop = Math.max(0, row.offsetTop - list.offsetTop - 80);
+    }
+  }
+
   document.addEventListener('DOMContentLoaded', function () {
+    initOpenRow();
     initBulk();
     initAutosubmit();
     initFrame();
