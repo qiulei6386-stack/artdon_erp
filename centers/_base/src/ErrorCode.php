@@ -16,6 +16,7 @@ final class ErrorCode
     public const VALIDATION_FAILED = 'VALIDATION_FAILED';
     public const NOT_FOUND = 'NOT_FOUND';
     public const CONFLICT = 'CONFLICT';
+    public const BAD_REQUEST = 'BAD_REQUEST';
     public const UNKNOWN_ACTION = 'UNKNOWN_ACTION';
     public const SERVER_ERROR = 'SERVER_ERROR';
 
