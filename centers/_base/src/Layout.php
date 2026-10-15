@@ -45,11 +45,15 @@ final class Layout
         return Url::center('system', 'profile.php');
     }
 
+    /** @var list<string> 本页额外加载的脚本地址 */
+    private static $scripts = [];
+
     /**
-     * @param array{title?: string, nav?: string, crumbs?: array<string, ?string>} $opts
+     * @param array{title?: string, nav?: string, crumbs?: array<string, ?string>, scripts?: list<string>} $opts
      */
     public static function start(array $opts): void
     {
+        self::$scripts = $opts['scripts'] ?? [];
         $title = (string) ($opts['title'] ?? '');
         $crumbs = $opts['crumbs'] ?? [$title => null];
         $user = Auth::user();
@@ -184,6 +188,9 @@ final class Layout
     private static function foot(): void
     {
         echo '<script src="' . self::e(Url::asset('base.js')) . '" defer></script>';
+        foreach (self::$scripts as $src) {
+            echo '<script src="' . self::e($src) . '" defer></script>';
+        }
         echo '</body></html>';
     }
 

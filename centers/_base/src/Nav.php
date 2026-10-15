@@ -31,7 +31,7 @@ final class Nav
                 'items' => [
                     ['key' => 'profile', 'label' => '个人账号', 'icon' => 'user', 'href' => Url::center('system', 'profile.php'), 'permission' => '', 'ready' => true],
                     ['key' => 'accounts', 'label' => '账号管理', 'icon' => 'users', 'href' => Url::center('system', 'accounts.php'), 'permission' => 'users.view', 'ready' => true],
-                    ['key' => 'permissions', 'label' => '权限中心', 'icon' => 'shield', 'href' => '', 'permission' => 'users.view', 'ready' => false],
+                    ['key' => 'permissions', 'label' => '权限中心', 'icon' => 'shield', 'href' => Url::center('system', 'roles.php'), 'permission' => 'users.view', 'ready' => true],
                     ['key' => 'settings', 'label' => '设置中心', 'icon' => 'settings', 'href' => '', 'permission' => 'settings.view', 'ready' => false],
                 ],
             ],
