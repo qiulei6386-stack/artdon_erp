@@ -45,7 +45,7 @@ foreach (['crm_task_center.php'=>'crm_task_center_ensure_tables','crm_visit.php'
 }
 check(db()->queries===[], 'Validated schema must not execute maintenance again');
 foreach (['crm_task_center_list','crm_sample_shipments','crm_task_customer_options','crm_task_customer_contacts'] as $name) eval(original('crm_task_center.php',$name));
-eval(original('crm_visit.php','crm_visit_list'));
+foreach (['crm_visit_category_terms','crm_visit_list'] as $name) eval(original('crm_visit.php',$name));
 foreach (['crm_customer_shipment_items','crm_customer_shipment_cartons'] as $name) eval(original('crm_customer.php',$name));
 foreach (['crm_task_center_list','crm_visit_list','crm_sample_shipments'] as $name) {
     db()->rows=array_fill(0,51,['id'=>1]); db()->queries=[];
