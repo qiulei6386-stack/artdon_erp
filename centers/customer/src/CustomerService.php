@@ -88,7 +88,7 @@ final class CustomerService
     // ---------------------------------------------------------------- 列表
 
     /**
-     * @param array<string, mixed> $f q、country、level、lifecycle、owner_id、follow、created、no_contact、sort
+     * @param array<string, mixed> $f q、country、level、lifecycle、owner_id、group_id、follow、created、no_contact、sort
      * @return array{rows: list<array<string, mixed>>, total: int, page: int, pages: int}
      */
     public function list(string $tab, array $f, int $page = 1): array
@@ -214,7 +214,12 @@ final class CustomerService
             $where[] = 'c.created_at >= ?';
             $params[] = date('Y-m-01 00:00:00');
         }
-        if (!empty($f['no_contact'])) {
+        $groupId = (int) ($f['group_id'] ?? 0);
+        if ($groupId > 0) {
+            $where[] = 'EXISTS (SELECT 1 FROM crm_customer_group_relations fgr WHERE fgr.customer_id = c.id AND fgr.group_id = ?)';
+            $params[] = $groupId;
+        }
+                if (!empty($f['no_contact'])) {
             $where[] = 'NOT EXISTS (SELECT 1 FROM crm_contacts nct WHERE nct.customer_id = c.id AND nct.deleted_at IS NULL)';
         }
         return [$where, $params];
@@ -415,6 +420,10 @@ final class CustomerService
             $status = (string) RuleConfig::defaultValue('promotion_status', Dictionary::defaultKey('promotion_status', 'not_promoted'));
             $this->pdo->prepare('INSERT INTO crm_customer_promotion_status (customer_id, status, updated_by, updated_at) VALUES (?, ?, ?, ?)')->execute([$id, $status, $me, $now]);
             $this->saveOwners($id, $primaryId, $assistantIds);
+            $groups = $this->groupInput();
+            if ($groups !== null) {
+                GroupService::setForCustomer($this->pdo, $id, $groups, $me);
+            }
             $contactService = new ContactService($this->operator, $this->pdo);
             foreach (array_values($contacts) as $i => $contact) {
                 $contactService->insert($id, $contact + ['is_primary' => $i === 0 ? 1 : 0], false);
@@ -461,6 +470,12 @@ final class CustomerService
             $this->savePrimaryAddress($id, $data);
             $this->saveKeys($id, 'crm_customer_source_tags', 'source_key', $data['source_tags']);
             $this->saveKeys($id, 'crm_customer_promotion_channels', 'channel_key', $data['promotion_channels']);
+            $groups = $this->groupInput();
+            if ($groups !== null) {
+                $beforeGroups = GroupService::forCustomer($this->pdo, $id);
+                GroupService::setForCustomer($this->pdo, $id, $groups, (int) $this->operator['id']);
+                $afterGroups = GroupService::forCustomer($this->pdo, $id);
+            }
             $this->pdo->commit();
         } catch (Throwable $e) {
             $this->pdo->rollBack();
@@ -478,6 +493,10 @@ final class CustomerService
                 $changed[$k] = $v;
             }
         }
+        if (isset($beforeGroups, $afterGroups) && $beforeGroups !== $afterGroups) {
+            $old['group_ids'] = $beforeGroups;
+            $changed['group_ids'] = $afterGroups;
+        }
         if ($changed) {
             CustomerLog::write('customer_update', $id, '编辑客户', '修改了 ' . implode('、', array_map([self::class, 'fieldLabel'], array_keys($changed))), $old, $changed, $this->operator);
         }
@@ -488,7 +507,7 @@ final class CustomerService
     {
         $labels = [
             'country' => '国家', 'website' => '网站', 'email' => '邮箱', 'level' => '等级', 'lifecycle_key' => '阶段',
-            'source_tags' => '来源', 'promotion_channels' => '推广方式',
+            'source_tags' => '来源', 'promotion_channels' => '推广方式', 'group_ids' => '分组',
         ];
         return $labels[$key] ?? (self::TEXT_FIELDS[$key][0] ?? $key);
     }
@@ -755,6 +774,13 @@ final class CustomerService
     /** @var array<string, mixed> */
     private $lastInput = [];
 
+    /** 提交的分组（没提交返回 null）。 @return list<int>|null */
+    private function groupInput(): ?array
+    {
+        $raw = $this->rawArray('group_ids');
+        return $raw === null ? null : array_values(array_filter(array_map('intval', $raw)));
+    }
+
     /** 数组字段：没提交返回 null；提交了（哪怕为空）返回数组。 @return list<mixed>|null */
     private function rawArray(string $field): ?array
     {
@@ -827,6 +853,45 @@ final class CustomerService
         if ($errors) {
             throw new ValidationException($errors);
         }
+    }
+
+    /**
+     * 维护客户附属资料（地址、聊天群等）前的检查：有权限、看得到、未删除、不在公海、在自己范围内。
+     *
+     * @return array<string, mixed> 客户原始资料
+     */
+    public function requireMaintain(int $id, string $permission, string $label): array
+    {
+        if (!$this->can($permission)) {
+            throw new PermissionException('没有' . $label . '的权限（' . $permission . '）');
+        }
+        $row = $this->visibleRow($id, false);
+        if (!$this->canMaintain($row)) {
+            throw new PermissionException('公海客户需要先领取或分配后才能' . $label);
+        }
+        return $row;
+    }
+
+    /**
+     * 按名称、代码、编号找自己能看到的客户（选客户用），最多 10 个。
+     *
+     * @return list<array{id: int, name: string, country: string, city: string}>
+     */
+    public function search(string $q, int $excludeId = 0): array
+    {
+        $q = trim($q);
+        if ($q === '') {
+            return [];
+        }
+        $params = [];
+        $scope = CustomerScope::sql($this->operator, $params);
+        $like = '%' . addcslashes($q, '\\%_') . '%';
+        $where = 'c.deleted_at IS NULL AND c.id <> ? AND ' . $scope . ' AND (c.customer_name LIKE ? OR c.customer_name_en LIKE ? OR c.customer_code LIKE ? OR c.id = ?)';
+        $stmt = $this->pdo->prepare('SELECT c.id, c.customer_name, c.country, c.city FROM crm_customers c WHERE ' . $where . ' ORDER BY c.customer_name LIMIT 10');
+        $stmt->execute(array_merge([$excludeId], $params, [$like, $like, $like, ctype_digit($q) ? (int) $q : 0]));
+        return array_map(static function (array $r): array {
+            return ['id' => (int) $r['id'], 'name' => (string) $r['customer_name'], 'country' => Country::label((string) $r['country']), 'city' => (string) ($r['city'] ?? '')];
+        }, $stmt->fetchAll(PDO::FETCH_ASSOC));
     }
 
     /** 能看到的未删除客户的原始资料（看不到抛 NotFoundException）。 @return array<string, mixed> */

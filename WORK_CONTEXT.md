@@ -1,5 +1,19 @@
 # Artdon ERP 工作上下文
 
+## 2026-10-15：客户中心第二批（二）· 分组、多地址、聊天群、客户关系（新系统）
+
+- 上一步：PR #21 第二批（一）暂存池与合并，服务器 `f01a45e`（已确认部署成功）。
+- 本次完成：
+  - 分组 `centers/customer/groups.php`：新建、改名、颜色、排序、删除（软删除，客户不受影响，不再参与数据范围；重建同名分组时启用原分组并清空旧关联）；客户列表按分组筛选；勾选客户后批量“加入 / 只放在 / 移出”分组；新建、编辑客户时勾选分组。管理需要 `customer.batch`（与旧系统一致）。
+  - 详情新标签“地址”：新增、编辑、设为主地址、删除（主地址不能删）；主地址变化同步客户资料的国家、城市、地址（旧系统显示也用主地址）。类型读字典 address_type。
+  - 详情新标签“聊天群”：微信群 / WhatsApp 群，群主、群里的联系人（只能选本客户联系人）、是否可用于推广、状态（正常 / 暂停 / 已失效）、备注；新增、编辑、删除（软删除）。
+  - 详情新标签“关系”：登记“对方是这个客户的 ××”（类型读字典 customer_relation_type），输入名称、代码或编号查找对方客户（只能选看得到的）；两边都显示（母公司 / 子公司自动反过来），看不到的客户不显示名称；删除。需要 `customer.graph_manage`。
+  - 地址、聊天群需要 `customer.edit`，且客户在自己范围内（公海先领取）。合并客户后只保留一个主地址。
+  - 底座：`.table-wrap` 加 `position: relative`，修复手机上表格里隐藏的读屏文字把整页撑出横向滚动的问题（所有列表页都受益）。
+- 修改文件：`centers/customer/{groups.php,index.php,view.php,api.php}`、`centers/customer/src/{GroupService,CustomerDetails,CustomerService,CustomerScope,CustomerForm,CustomerMerger,CustomerLog}.php`、`centers/customer/assets/*`、`centers/customer/tests/details_contract.php`、`centers/_base/assets/base.css`、`centers/README.md`、`tools/ci_php_checks.sh`、本文件。
+- 检查结果：`details_contract.php` 49 项及客户中心前两组契约全部通过；本地浏览器：分组/地址/聊天群/关系 27 项、暂存池与合并 22 项、客户中心 39 项、系统中心七组全部通过；`tools/ci_php_checks.sh` 契约 85 项全部通过；`tools/ci_js_checks.sh` 26 项通过。
+- 尚未完成 / 下一步：第二批（三）导入导出、名片识别。
+
 ## 2026-10-15：客户中心第二批（一）· 暂存池处理与合并客户（新系统）
 
 - 上一步：PR #20 客户中心第一批，服务器 `9a56758`。第二批分三小批：（一）暂存池与合并（本次）；（二）分组管理、多地址、聊天群、关系图谱；（三）导入导出、名片识别。

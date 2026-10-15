@@ -134,8 +134,86 @@
     });
   }
 
+  /* ---------- 弹窗里的多选框：data-check-values='{"contact_ids[]":[1,2]}'（在基础脚本填好表单后执行） ---------- */
+  function initCheckValues() {
+    document.addEventListener('click', function (event) {
+      var opener = event.target.closest('[data-open-dialog][data-check-values]');
+      if (!opener) return;
+      var dialog = document.getElementById(opener.getAttribute('data-open-dialog'));
+      var values = {};
+      try { values = JSON.parse(opener.getAttribute('data-check-values') || '{}'); } catch (e) { values = {}; }
+      Object.keys(values).forEach(function (name) {
+        var wanted = (values[name] || []).map(String);
+        dialog.querySelectorAll('input[type=checkbox][name="' + name + '"]').forEach(function (box) {
+          box.checked = wanted.indexOf(box.value) !== -1;
+        });
+      });
+    });
+  }
+
+  /* ---------- 选客户：输入后查找自己能看到的客户 ---------- */
+  function initPickers() {
+    document.querySelectorAll('[data-customer-picker]').forEach(function (picker) {
+      var input = picker.querySelector('[data-picker-input]');
+      var value = picker.querySelector('[data-picker-value]');
+      var list = picker.querySelector('[data-picker-list]');
+      var timer = null;
+      var seq = 0;
+      function close() { list.hidden = true; list.innerHTML = ''; }
+      input.addEventListener('input', function () {
+        value.value = '';
+        clearTimeout(timer);
+        var q = input.value.trim();
+        if (q === '') { close(); return; }
+        timer = setTimeout(function () {
+          var mine = ++seq;
+          var url = picker.getAttribute('data-search') + '&q=' + encodeURIComponent(q) + '&exclude=' + encodeURIComponent(picker.getAttribute('data-exclude') || '0');
+          window.Centers.api(url, { method: 'GET' }).then(function (result) {
+            if (mine !== seq) return;
+            list.innerHTML = '';
+            var items = (result.data && result.data.items) || [];
+            if (!items.length) {
+              list.appendChild(el('li', 'picker-empty', '没有找到（只能选你看得到的客户）'));
+            }
+            items.forEach(function (item) {
+              var li = el('li');
+              var button = el('button', 'picker-item');
+              button.type = 'button';
+              button.appendChild(el('span', '', item.name));
+              button.appendChild(el('small', '', '#' + item.id + ' · ' + item.country + (item.city ? ' ' + item.city : '')));
+              button.addEventListener('click', function () {
+                value.value = String(item.id);
+                input.value = item.name;
+                close();
+              });
+              li.appendChild(button);
+              list.appendChild(li);
+            });
+            list.hidden = false;
+          });
+        }, 250);
+      });
+      var dialog = picker.closest('dialog');
+      if (dialog) dialog.addEventListener('close', function () { input.value = ''; value.value = ''; close(); });
+    });
+  }
+
+  /* ---------- 新建、编辑共用的弹窗：有编号（name=id）时提交到 data-switch-action ---------- */
+  function initSwitchAction() {
+    document.addEventListener('submit', function (event) {
+      var form = event.target;
+      if (!(form instanceof HTMLFormElement) || !form.hasAttribute('data-switch-action')) return;
+      if (!form.hasAttribute('data-create-action')) form.setAttribute('data-create-action', form.getAttribute('action'));
+      var id = form.querySelector('[name=id]');
+      form.setAttribute('action', id && id.value ? form.getAttribute('data-switch-action') : form.getAttribute('data-create-action'));
+    }, true);
+  }
+
   document.addEventListener('DOMContentLoaded', function () {
+    initSwitchAction();
     initBulk();
     initCreate();
+    initCheckValues();
+    initPickers();
   });
 })();

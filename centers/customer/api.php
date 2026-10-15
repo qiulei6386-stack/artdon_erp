@@ -9,7 +9,9 @@ use Artdon\Centers\Base\Api;
 use Artdon\Centers\Base\Flash;
 use Artdon\Centers\Base\Url;
 use Artdon\Centers\Customer\ContactService;
+use Artdon\Centers\Customer\CustomerDetails;
 use Artdon\Centers\Customer\CustomerMerger;
+use Artdon\Centers\Customer\GroupService;
 use Artdon\Centers\Customer\CustomerService;
 use Artdon\Centers\Customer\LeadPool;
 use Artdon\Centers\Customer\DuplicateFinder;
@@ -122,5 +124,63 @@ Api::run([
         (new LeadPool($user))->reject($id($input, 'lead_id'), (string) ($input['reason'] ?? ''));
         Flash::set('success', '已丢弃。');
         return ['message' => '已丢弃', 'redirect' => Url::center('customer', 'leads.php')];
+    }],
+    'customer_search' => ['method' => 'GET', 'handler' => static function (array $input, array $user) use ($customers): array {
+        return ['items' => $customers($user)->search((string) ($_GET['q'] ?? ''), (int) ($_GET['exclude'] ?? 0))];
+    }],
+    'group_create' => ['method' => 'POST', 'handler' => static function (array $input, array $user): array {
+        (new GroupService($user))->create($input);
+        Flash::set('success', '分组已新建。');
+        return ['message' => '已新建'];
+    }],
+    'group_update' => ['method' => 'POST', 'handler' => static function (array $input, array $user) use ($id): array {
+        (new GroupService($user))->update($id($input), $input);
+        Flash::set('success', '分组已保存。');
+        return ['message' => '已保存'];
+    }],
+    'group_delete' => ['method' => 'POST', 'handler' => static function (array $input, array $user) use ($id): array {
+        (new GroupService($user))->delete($id($input));
+        Flash::set('success', '分组已删除，客户本身不受影响。');
+        return ['message' => '已删除'];
+    }],
+    'group_apply' => ['method' => 'POST', 'handler' => static function (array $input, array $user) use ($ids): array {
+        $n = (new GroupService($user))->apply($ids($input), (int) ($input['group_id'] ?? 0), (string) ($input['mode'] ?? ''));
+        Flash::set('success', '已调整 ' . $n . ' 个客户的分组。');
+        return ['message' => '已调整'];
+    }],
+    'address_save' => ['method' => 'POST', 'handler' => static function (array $input, array $user) use ($id): array {
+        (new CustomerDetails($user))->saveAddress($id($input, 'customer_id'), $input);
+        Flash::set('success', '地址已保存。');
+        return ['message' => '已保存'];
+    }],
+    'address_primary' => ['method' => 'POST', 'handler' => static function (array $input, array $user) use ($id): array {
+        (new CustomerDetails($user))->setPrimaryAddress($id($input, 'customer_id'), $id($input));
+        Flash::set('success', '已设为主地址，客户资料里的国家、城市、地址已同步。');
+        return ['message' => '已设置'];
+    }],
+    'address_delete' => ['method' => 'POST', 'handler' => static function (array $input, array $user) use ($id): array {
+        (new CustomerDetails($user))->deleteAddress($id($input, 'customer_id'), $id($input));
+        Flash::set('success', '地址已删除。');
+        return ['message' => '已删除'];
+    }],
+    'chat_save' => ['method' => 'POST', 'handler' => static function (array $input, array $user) use ($id): array {
+        (new CustomerDetails($user))->saveChatGroup($id($input, 'customer_id'), $input);
+        Flash::set('success', '聊天群已保存。');
+        return ['message' => '已保存'];
+    }],
+    'chat_delete' => ['method' => 'POST', 'handler' => static function (array $input, array $user) use ($id): array {
+        (new CustomerDetails($user))->deleteChatGroup($id($input, 'customer_id'), $id($input));
+        Flash::set('success', '聊天群已删除。');
+        return ['message' => '已删除'];
+    }],
+    'relation_add' => ['method' => 'POST', 'handler' => static function (array $input, array $user) use ($id): array {
+        (new CustomerDetails($user))->addRelation($id($input, 'customer_id'), $input);
+        Flash::set('success', '客户关系已登记。');
+        return ['message' => '已登记'];
+    }],
+    'relation_delete' => ['method' => 'POST', 'handler' => static function (array $input, array $user) use ($id): array {
+        (new CustomerDetails($user))->deleteRelation($id($input, 'customer_id'), $id($input));
+        Flash::set('success', '客户关系已删除。');
+        return ['message' => '已删除'];
     }],
 ]);

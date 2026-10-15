@@ -13,6 +13,7 @@ use Artdon\Centers\Base\NotFoundException;
 use Artdon\Centers\Base\Url;
 use Artdon\Centers\Customer\ContactService;
 use Artdon\Centers\Customer\Country;
+use Artdon\Centers\Customer\CustomerDetails;
 use Artdon\Centers\Customer\CustomerForm;
 use Artdon\Centers\Customer\CustomerLog;
 use Artdon\Centers\Customer\CustomerService;
@@ -53,6 +54,14 @@ $tabs = ['overview' => '概览'];
 if ($canContacts) {
     $tabs['contacts'] = '联系人 ' . count($contacts);
 }
+$details = new CustomerDetails($user);
+$chatGroups = $details->chatGroups($id);
+$relations = $details->relations($id);
+$can['detail_edit'] = $maintain && $service->can('customer.edit');
+$can['graph'] = !$deleted && $details->canManageRelations();
+$tabs['addresses'] = '地址 ' . count($c['addresses']);
+$tabs['chats'] = '聊天群 ' . count($chatGroups);
+$tabs['relations'] = '关系 ' . count($relations);
 $tabs['followups'] = '跟进 ' . (int) $c['followup_count'];
 if (!$deleted && $service->can('customer.merge')) {
     $tabs['duplicates'] = '查重';
@@ -282,6 +291,188 @@ Layout::start([
     <div class="dialog-foot"><button type="button" class="btn" data-close-dialog>取消</button><button type="submit" class="btn btn-danger">合并</button></div>
   </form>
 </dialog>
+<?php endif; ?>
+
+<?php if ($tab === 'addresses'): $addrTypes = CustomerDetails::addressTypes(); $addrRows = $details->addresses($id); ?>
+<section class="card">
+  <div class="card-head"><h2 class="card-title">地址</h2><?php if ($can['detail_edit']): ?><button type="button" class="btn btn-sm btn-primary" data-open-dialog="d-address" data-fill='{"id":"","title_text":"新增地址"}'>新增地址</button><?php endif; ?></div>
+  <?php if (!$addrRows): ?>
+    <div class="card-body muted">还没有地址。</div>
+  <?php else: ?>
+  <div class="table-wrap">
+    <table class="table" style="min-width: 860px; table-layout: fixed">
+      <thead><tr><th scope="col" style="width: 12%">类型</th><th scope="col" style="width: 16%">国家 / 城市</th><th scope="col">地址</th><th scope="col" style="width: 16%">联系人 / 电话</th><th scope="col" style="width: 190px"><span class="sr-only">操作</span></th></tr></thead>
+      <tbody>
+      <?php foreach ($addrRows as $a):
+          $fill = json_encode(['id' => (int) $a['id'], 'title_text' => '编辑地址', 'address_type' => $a['address_type'], 'country' => Country::normalize((string) $a['country']), 'city' => $a['city'], 'address' => $a['address'],
+              'postal_code' => $a['postal_code'], 'contact_name' => $a['contact_name'], 'phone' => $a['phone'], 'is_primary' => (int) $a['is_primary'] ? '1' : ''], JSON_UNESCAPED_UNICODE); ?>
+        <tr>
+          <td><?= Layout::e($addrTypes[$a['address_type']] ?? (string) $a['address_type']) ?><?php if ((int) $a['is_primary']): ?> <span class="badge badge-brand">主地址</span><?php endif; ?></td>
+          <td class="truncate"><?= Layout::e(Country::label((string) $a['country'])) ?><small class="cell-sub"><?= Layout::e((string) $a['city']) ?></small></td>
+          <td class="cell-main"><span class="pre"><?= $val($a['address']) ?></span><?php if ((string) $a['postal_code'] !== ''): ?><small class="cell-sub">邮编 <?= Layout::e((string) $a['postal_code']) ?></small><?php endif; ?></td>
+          <td class="truncate"><?= $val($a['contact_name']) ?><small class="cell-sub"><?= Layout::e((string) $a['phone']) ?></small></td>
+          <td class="cell-actions">
+            <?php if ($can['detail_edit']): ?>
+              <button type="button" class="btn btn-sm" data-open-dialog="d-address" data-fill="<?= Layout::e((string) $fill) ?>">编辑</button>
+              <?php if (!(int) $a['is_primary']): ?>
+                <form data-api action="<?= Layout::e($api) ?>?action=address_primary" style="display:inline"><input type="hidden" name="customer_id" value="<?= $id ?>"><input type="hidden" name="id" value="<?= (int) $a['id'] ?>"><button type="submit" class="btn btn-sm btn-ghost">设为主地址</button></form>
+                <button type="button" class="btn btn-sm btn-ghost" data-open-dialog="d-address-delete" data-fill="<?= Layout::e((string) json_encode(['id' => (int) $a['id'], 'address_text' => $a['address']], JSON_UNESCAPED_UNICODE)) ?>">删除</button>
+              <?php endif; ?>
+            <?php endif; ?>
+          </td>
+        </tr>
+      <?php endforeach; ?>
+      </tbody>
+    </table>
+  </div>
+  <?php endif; ?>
+  <div class="card-body muted" style="border-top:1px solid var(--c-line-soft)">主地址就是客户资料里的国家、城市、地址，改主地址会一起改。</div>
+</section>
+<?php if ($can['detail_edit']): ?>
+<dialog class="dialog dialog-wide" id="d-address" aria-labelledby="d-address-title">
+  <form data-api action="<?= Layout::e($api) ?>?action=address_save">
+    <div class="dialog-head"><h2 class="dialog-title" id="d-address-title" data-text="title_text">地址</h2><button type="button" class="icon-btn" data-close-dialog aria-label="关闭">×</button></div>
+    <div class="dialog-body form-grid">
+      <p class="alert alert-error form-error span-2" data-form-error hidden></p>
+      <input type="hidden" name="customer_id" value="<?= $id ?>"><input type="hidden" name="id" value="">
+      <?= Form::select('address_type', '类型', $addrTypes, '', [], ['prefix' => 'ad', 'required' => true]) ?>
+      <?= Form::select('country', '国家', Country::options(), '', [], ['prefix' => 'ad', 'required' => true, 'placeholder' => '请选择国家']) ?>
+      <?= Form::input('city', '城市', '', [], ['prefix' => 'ad', 'maxlength' => 120]) ?>
+      <?= Form::input('postal_code', '邮编', '', [], ['prefix' => 'ad', 'maxlength' => 60]) ?>
+      <div class="span-2"><?= Form::textarea('address', '详细地址', '', [], ['prefix' => 'ad', 'required' => true, 'maxlength' => 500]) ?></div>
+      <?= Form::input('contact_name', '收件人 / 联系人', '', [], ['prefix' => 'ad', 'maxlength' => 120]) ?>
+      <?= Form::input('phone', '电话', '', [], ['prefix' => 'ad', 'maxlength' => 80, 'type' => 'tel']) ?>
+      <label class="check span-2"><input type="checkbox" name="is_primary" value="1"><span>设为主地址</span></label>
+    </div>
+    <div class="dialog-foot"><button type="button" class="btn" data-close-dialog>取消</button><button type="submit" class="btn btn-primary">保存</button></div>
+  </form>
+</dialog>
+<dialog class="dialog dialog-sm" id="d-address-delete" aria-labelledby="d-address-delete-title">
+  <form data-api action="<?= Layout::e($api) ?>?action=address_delete">
+    <div class="dialog-head"><h2 class="dialog-title" id="d-address-delete-title">删除地址</h2><button type="button" class="icon-btn" data-close-dialog aria-label="关闭">×</button></div>
+    <div class="dialog-body stack"><p class="alert alert-error form-error" data-form-error hidden></p><input type="hidden" name="customer_id" value="<?= $id ?>"><input type="hidden" name="id" value="">
+      <p style="margin:0">确定删除地址“<span data-text="address_text"></span>”吗？</p></div>
+    <div class="dialog-foot"><button type="button" class="btn" data-close-dialog>取消</button><button type="submit" class="btn btn-danger">删除</button></div>
+  </form>
+</dialog>
+<?php endif; ?>
+<?php endif; ?>
+
+<?php if ($tab === 'chats'):
+    $contactNames = [];
+    foreach ($contacts as $ct) {
+        $contactNames[(int) $ct['id']] = (string) $ct['name'];
+    } ?>
+<section class="card">
+  <div class="card-head"><h2 class="card-title">聊天群</h2><?php if ($can['detail_edit']): ?><button type="button" class="btn btn-sm btn-primary" data-open-dialog="d-chat" data-fill='{"id":"","title_text":"新增聊天群","group_platform":"wechat_group","status":"active","use_for_promotion":"1"}' data-check-values='{"contact_ids[]":[]}'>新增聊天群</button><?php endif; ?></div>
+  <?php if (!$chatGroups): ?>
+    <div class="card-body muted">还没有登记聊天群。</div>
+  <?php else: ?>
+  <div class="table-wrap">
+    <table class="table" style="min-width: 860px; table-layout: fixed">
+      <thead><tr><th scope="col" style="width: 24%">群名称</th><th scope="col" style="width: 12%">平台</th><th scope="col" style="width: 12%">群主</th><th scope="col" style="width: 20%">群里的联系人</th><th scope="col" style="width: 12%">状态</th><th scope="col" style="width: 140px"><span class="sr-only">操作</span></th></tr></thead>
+      <tbody>
+      <?php foreach ($chatGroups as $g):
+          $fill = json_encode(['id' => (int) $g['id'], 'title_text' => '编辑聊天群', 'group_name' => $g['group_name'], 'group_platform' => $g['group_platform'], 'group_owner' => $g['group_owner'], 'status' => $g['status'],
+              'use_for_promotion' => (int) $g['use_for_promotion'] ? '1' : '', 'remark' => $g['remark']], JSON_UNESCAPED_UNICODE);
+          $names = array_values(array_filter(array_map(static function (int $cid) use ($contactNames): string {
+              return $contactNames[$cid] ?? '';
+          }, $g['contact_ids']))); ?>
+        <tr>
+          <td class="cell-main"><?= Layout::e((string) $g['group_name']) ?><?php if ((string) $g['remark'] !== ''): ?><small class="cell-sub"><?= Layout::e((string) $g['remark']) ?></small><?php endif; ?></td>
+          <td><?= Layout::e(CustomerDetails::CHAT_PLATFORMS[$g['group_platform']] ?? (string) $g['group_platform']) ?></td>
+          <td class="truncate"><?= $val($g['group_owner']) ?></td>
+          <td class="truncate" title="<?= Layout::e(implode('、', $names)) ?>"><?= $names ? Layout::e(implode('、', $names)) : '<span class="muted">—</span>' ?></td>
+          <td><span class="badge <?= $g['status'] === 'active' ? 'badge-good' : ($g['status'] === 'paused' ? 'badge-warn' : 'badge-muted') ?>"><?= Layout::e(CustomerDetails::CHAT_STATUS[$g['status']] ?? (string) $g['status']) ?></span><?php if ((int) $g['use_for_promotion']): ?><small class="cell-sub">可用于推广</small><?php endif; ?></td>
+          <td class="cell-actions"><?php if ($can['detail_edit']): ?>
+            <button type="button" class="btn btn-sm" data-open-dialog="d-chat" data-fill="<?= Layout::e((string) $fill) ?>" data-check-values="<?= Layout::e((string) json_encode(['contact_ids[]' => $g['contact_ids']])) ?>">编辑</button>
+            <button type="button" class="btn btn-sm btn-ghost" data-open-dialog="d-chat-delete" data-fill="<?= Layout::e((string) json_encode(['id' => (int) $g['id'], 'chat_name' => $g['group_name']], JSON_UNESCAPED_UNICODE)) ?>">删除</button>
+          <?php endif; ?></td>
+        </tr>
+      <?php endforeach; ?>
+      </tbody>
+    </table>
+  </div>
+  <?php endif; ?>
+</section>
+<?php if ($can['detail_edit']): ?>
+<dialog class="dialog dialog-wide" id="d-chat" aria-labelledby="d-chat-title">
+  <form data-api action="<?= Layout::e($api) ?>?action=chat_save">
+    <div class="dialog-head"><h2 class="dialog-title" id="d-chat-title" data-text="title_text">聊天群</h2><button type="button" class="icon-btn" data-close-dialog aria-label="关闭">×</button></div>
+    <div class="dialog-body form-grid">
+      <p class="alert alert-error form-error span-2" data-form-error hidden></p>
+      <input type="hidden" name="customer_id" value="<?= $id ?>"><input type="hidden" name="id" value="">
+      <?= Form::input('group_name', '群名称', '', [], ['prefix' => 'ch', 'required' => true, 'maxlength' => 190]) ?>
+      <?= Form::select('group_platform', '平台', CustomerDetails::CHAT_PLATFORMS, 'wechat_group', [], ['prefix' => 'ch', 'required' => true]) ?>
+      <?= Form::input('group_owner', '群主', '', [], ['prefix' => 'ch', 'maxlength' => 120]) ?>
+      <?= Form::select('status', '状态', CustomerDetails::CHAT_STATUS, 'active', [], ['prefix' => 'ch']) ?>
+      <fieldset class="field span-2 check-group" data-array="contact_ids"><legend class="field-label">群里的联系人</legend><div class="check-list">
+        <?php if (!$contacts): ?><span class="muted">这个客户还没有联系人</span><?php endif; ?>
+        <?php foreach ($contacts as $ct): ?><label class="check"><input type="checkbox" name="contact_ids[]" value="<?= (int) $ct['id'] ?>"><span><?= Layout::e((string) $ct['name']) ?></span></label><?php endforeach; ?>
+      </div></fieldset>
+      <div class="span-2"><?= Form::textarea('remark', '备注', '', [], ['prefix' => 'ch', 'maxlength' => 500]) ?></div>
+      <label class="check span-2"><input type="checkbox" name="use_for_promotion" value="1"><span>可用于推广</span></label>
+    </div>
+    <div class="dialog-foot"><button type="button" class="btn" data-close-dialog>取消</button><button type="submit" class="btn btn-primary">保存</button></div>
+  </form>
+</dialog>
+<dialog class="dialog dialog-sm" id="d-chat-delete" aria-labelledby="d-chat-delete-title">
+  <form data-api action="<?= Layout::e($api) ?>?action=chat_delete">
+    <div class="dialog-head"><h2 class="dialog-title" id="d-chat-delete-title">删除聊天群</h2><button type="button" class="icon-btn" data-close-dialog aria-label="关闭">×</button></div>
+    <div class="dialog-body stack"><p class="alert alert-error form-error" data-form-error hidden></p><input type="hidden" name="customer_id" value="<?= $id ?>"><input type="hidden" name="id" value="">
+      <p style="margin:0">确定删除聊天群“<strong data-text="chat_name"></strong>”吗？</p></div>
+    <div class="dialog-foot"><button type="button" class="btn" data-close-dialog>取消</button><button type="submit" class="btn btn-danger">删除</button></div>
+  </form>
+</dialog>
+<?php endif; ?>
+<?php endif; ?>
+
+<?php if ($tab === 'relations'): ?>
+<section class="card">
+  <div class="card-head"><h2 class="card-title">客户关系</h2><?php if ($can['graph']): ?><button type="button" class="btn btn-sm btn-primary" data-open-dialog="d-relation">登记关系</button><?php endif; ?></div>
+  <?php if (!$relations): ?>
+    <div class="card-body muted">还没有登记和其他客户的关系（如母公司、代理商、工程方）。</div>
+  <?php else: ?>
+  <ul class="notice-list">
+    <?php foreach ($relations as $r): ?>
+      <li class="notice"><div class="notice-body">
+        <div class="notice-title"><?php if ($r['other_visible']): ?><a class="row-link" href="<?= Layout::e(Url::center('customer', 'view.php?id=' . $r['other_id'])) ?>"><?= Layout::e($r['other_name']) ?></a><?php else: ?><span class="muted"><?= Layout::e($r['other_name']) ?></span><?php endif; ?>
+          <span class="badge"><?= Layout::e($r['label']) ?></span></div>
+        <?php if ($r['remark'] !== ''): ?><p class="notice-text"><?= Layout::e($r['remark']) ?></p><?php endif; ?>
+      </div>
+      <?php if ($can['graph']): ?><button type="button" class="btn btn-sm btn-ghost" data-open-dialog="d-relation-delete" data-fill="<?= Layout::e((string) json_encode(['id' => $r['id'], 'other_text' => $r['other_name']], JSON_UNESCAPED_UNICODE)) ?>">删除</button><?php endif; ?></li>
+    <?php endforeach; ?>
+  </ul>
+  <?php endif; ?>
+</section>
+<?php if ($can['graph']): ?>
+<dialog class="dialog" id="d-relation" aria-labelledby="d-relation-title">
+  <form data-api action="<?= Layout::e($api) ?>?action=relation_add">
+    <div class="dialog-head"><h2 class="dialog-title" id="d-relation-title">登记客户关系</h2><button type="button" class="icon-btn" data-close-dialog aria-label="关闭">×</button></div>
+    <div class="dialog-body stack">
+      <p class="alert alert-error form-error" data-form-error hidden></p>
+      <input type="hidden" name="customer_id" value="<?= $id ?>">
+      <div class="field picker" data-customer-picker data-exclude="<?= $id ?>" data-search="<?= Layout::e($api) ?>?action=customer_search">
+        <label class="field-label" for="rl-search">对方客户<span class="field-req" aria-hidden="true">*</span></label>
+        <input class="input" id="rl-search" type="search" autocomplete="off" placeholder="输入名称、代码或编号查找" data-picker-input>
+        <input type="hidden" name="related_customer_id" value="" data-picker-value>
+        <ul class="picker-list" data-picker-list hidden></ul>
+      </div>
+      <?= Form::select('relation_type', '对方是这个客户的', CustomerDetails::relationTypes(), '', [], ['prefix' => 'rl', 'required' => true, 'placeholder' => '请选择']) ?>
+      <?= Form::input('remark', '备注', '', [], ['prefix' => 'rl', 'maxlength' => 500]) ?>
+    </div>
+    <div class="dialog-foot"><button type="button" class="btn" data-close-dialog>取消</button><button type="submit" class="btn btn-primary">登记</button></div>
+  </form>
+</dialog>
+<dialog class="dialog dialog-sm" id="d-relation-delete" aria-labelledby="d-relation-delete-title">
+  <form data-api action="<?= Layout::e($api) ?>?action=relation_delete">
+    <div class="dialog-head"><h2 class="dialog-title" id="d-relation-delete-title">删除客户关系</h2><button type="button" class="icon-btn" data-close-dialog aria-label="关闭">×</button></div>
+    <div class="dialog-body stack"><p class="alert alert-error form-error" data-form-error hidden></p><input type="hidden" name="customer_id" value="<?= $id ?>"><input type="hidden" name="id" value="">
+      <p style="margin:0">确定删除和“<span data-text="other_text"></span>”的这条关系吗？两边都不再显示。</p></div>
+    <div class="dialog-foot"><button type="button" class="btn" data-close-dialog>取消</button><button type="submit" class="btn btn-danger">删除</button></div>
+  </form>
+</dialog>
+<?php endif; ?>
 <?php endif; ?>
 
 <?php if ($tab === 'logs'): $logs = CustomerLog::forCustomer($id); ?>

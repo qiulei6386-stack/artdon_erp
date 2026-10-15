@@ -33,3 +33,11 @@
   .dl-wide { grid-template-columns: 80px minmax(0, 1fr); }
 }
 .check-group > .check { display: flex; margin: 4px 0; white-space: normal; }
+.picker { position: relative; }
+.picker-list { list-style: none; margin: 4px 0 0; padding: 4px; border: 1px solid var(--c-line); border-radius: var(--radius); background: var(--c-surface); max-height: 240px; overflow-y: auto; }
+.picker-item { display: flex; flex-direction: column; align-items: flex-start; width: 100%; padding: 6px 8px; border: 0; border-radius: var(--radius); background: none; font: inherit; text-align: left; cursor: pointer; }
+.picker-item:hover, .picker-item:focus { background: var(--c-surface-2); }
+.picker-item small, .picker-empty { color: var(--c-muted); font-size: var(--fs-sm); }
+.picker-empty { padding: 6px 8px; }
+.notice > .btn { align-self: center; }
+.group-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
