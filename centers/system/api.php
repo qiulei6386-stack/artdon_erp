@@ -10,6 +10,7 @@ use Artdon\Centers\Base\Flash;
 use Artdon\Centers\System\AccountService;
 use Artdon\Centers\System\DepartmentService;
 use Artdon\Centers\System\PeopleService;
+use Artdon\Centers\System\RequestService;
 use Artdon\Centers\System\RoleService;
 
 $accounts = static function (array $user): AccountService {
@@ -135,5 +136,37 @@ Api::run([
         $r = (new PeopleService($user))->saveScopes((int) ($input['user_id'] ?? 0), $scopes);
         Flash::set('success', $r['changed'] ? '数据范围已保存：改动 ' . $r['changed'] . ' 个模块。' : '没有改动。');
         return ['changed' => $r['changed'], 'message' => '已保存'];
+    }],
+
+    // ---------- 权限申请与临时授权 ----------
+    'request_submit' => ['method' => 'POST', 'handler' => static function (array $input, array $user): array {
+        $newId = (new RequestService($user))->submit($input);
+        Flash::set('success', '申请已提交，等待审批。');
+        return ['id' => $newId, 'redirect' => 'requests.php?view=mine', 'message' => '已提交'];
+    }],
+    'request_cancel' => ['method' => 'POST', 'handler' => static function (array $input, array $user) use ($id): array {
+        (new RequestService($user))->cancel($id($input));
+        Flash::set('success', '申请已取消。');
+        return ['message' => '已取消'];
+    }],
+    'request_approve' => ['method' => 'POST', 'handler' => static function (array $input, array $user) use ($id): array {
+        (new RequestService($user))->approve($id($input), $input);
+        Flash::set('success', '已批准，对方马上获得这项权限，到期自动失效。');
+        return ['message' => '已批准'];
+    }],
+    'request_reject' => ['method' => 'POST', 'handler' => static function (array $input, array $user) use ($id): array {
+        (new RequestService($user))->reject($id($input), $input);
+        Flash::set('success', '已拒绝申请。');
+        return ['message' => '已拒绝'];
+    }],
+    'grant_revoke' => ['method' => 'POST', 'handler' => static function (array $input, array $user) use ($id): array {
+        (new RequestService($user))->revoke($id($input), $input);
+        Flash::set('success', '临时授权已撤销，马上失效。');
+        return ['message' => '已撤销'];
+    }],
+    'grant_extend' => ['method' => 'POST', 'handler' => static function (array $input, array $user) use ($id): array {
+        (new RequestService($user))->extend($id($input), $input);
+        Flash::set('success', '临时授权已延长。');
+        return ['message' => '已延长'];
     }],
 ]);
