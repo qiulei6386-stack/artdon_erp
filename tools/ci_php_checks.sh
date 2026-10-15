@@ -122,6 +122,7 @@ contract_tests=(
   centers/_base/tests/services_contract.php
   centers/customer/tests/customer_contract.php
   centers/customer/tests/leads_merge_contract.php
+  centers/customer/tests/details_contract.php
 )
 
 contract_passed=0

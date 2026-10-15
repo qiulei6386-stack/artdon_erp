@@ -15,6 +15,7 @@ use Artdon\Centers\Customer\Country;
 use Artdon\Centers\Customer\CustomerForm;
 use Artdon\Centers\Customer\CustomerScope;
 use Artdon\Centers\Customer\CustomerService;
+use Artdon\Centers\Customer\GroupService;
 use Artdon\Centers\Customer\LeadPool;
 use Artdon\Centers\Customer\RuleConfig;
 
@@ -32,7 +33,7 @@ $str = static function (string $key): string {
 };
 $filters = [
     'q' => $str('q'), 'country' => $str('country'), 'level' => $str('level'), 'lifecycle' => $str('lifecycle'),
-    'owner_id' => (int) ($_GET['owner_id'] ?? 0), 'follow' => $str('follow'), 'created' => $str('created'),
+    'owner_id' => (int) ($_GET['owner_id'] ?? 0), 'group_id' => (int) ($_GET['group_id'] ?? 0), 'follow' => $str('follow'), 'created' => $str('created'),
     'no_contact' => $str('no_contact') === '1' ? '1' : '', 'sort' => $str('sort'),
 ];
 $result = $service->list($tab, $filters, (int) ($_GET['page'] ?? 1));
@@ -53,11 +54,13 @@ $can = [
     'claim' => $service->can('customer.claim_public'),
     'restore' => $service->can('customer.restore'),
     'merge' => $service->can('customer.merge'),
+    'groups' => $service->can('customer.batch'),
     'leads' => LeadPool::canView($user),
 ];
 $leadCount = $can['leads'] ? (new LeadPool($user))->counts()['pending'] : 0;
-$bulk = in_array($tab, ['mine', 'all', 'public'], true) && ($can['assign'] || $can['merge'] || ($can['public'] && $tab !== 'public'));
+$bulk = in_array($tab, ['mine', 'all', 'public'], true) && ($can['assign'] || $can['merge'] || $can['groups'] || ($can['public'] && $tab !== 'public'));
 $options = CustomerService::options();
+$groupOptions = GroupService::options();
 $lifeBadge = static function (string $key): string {
     $map = ['deal' => 'badge-good', 'quoting' => 'badge-brand', 'sampling' => 'badge-brand', 'key_follow' => 'badge-brand', 'official' => 'badge-good', 'sleeping' => 'badge-muted', 'lost' => 'badge-bad', 'blacklist' => 'badge-bad'];
     return $map[$key] ?? '';
@@ -95,6 +98,7 @@ Layout::start([
     <p class="page-sub">你能看到的范围：<?= Layout::e(CustomerScope::describe($user)) ?>。新建客户按准入规则：<?= Layout::e(RuleConfig::ADMISSION_LABELS[RuleConfig::admissionMode()] ?? '') ?>。</p>
   </div>
   <div class="page-actions">
+    <a class="btn" href="<?= Layout::e(Url::center('customer', 'groups.php')) ?>">分组</a>
     <?php if ($can['leads']): ?><a class="btn" href="<?= Layout::e(Url::center('customer', 'leads.php')) ?>">暂存池<?= $leadCount ? ' <span class="tab-count">' . $leadCount . '</span>' : '' ?></a><?php endif; ?>
     <?php if ($can['create']): ?><button type="button" class="btn btn-primary" data-open-dialog="d-create">新建客户</button><?php endif; ?>
   </div>
@@ -126,6 +130,12 @@ Layout::start([
   <label class="sr-only" for="fo">负责人</label>
   <select class="input select" id="fo" name="owner_id"><option value="">全部负责人</option><?= CustomerForm::userOptions([$filters['owner_id']]) ?></select>
   <?php endif; ?>
+  <?php if ($groupOptions): ?>
+  <label class="sr-only" for="fg">分组</label>
+  <select class="input select" id="fg" name="group_id"><option value="">全部分组</option>
+    <?php foreach ($groupOptions as $k => $v): ?><option value="<?= (int) $k ?>"<?= $filters['group_id'] === (int) $k ? ' selected' : '' ?>><?= Layout::e($v) ?></option><?php endforeach; ?>
+  </select>
+  <?php endif; ?>
   <label class="sr-only" for="ff">跟进</label>
   <select class="input select" id="ff" name="follow"><option value="">跟进不限</option>
     <?php foreach (CustomerService::FOLLOW_FILTERS as $k => $v): ?><option value="<?= Layout::e((string) $k) ?>"<?= $filters['follow'] === (string) $k ? ' selected' : '' ?>><?= Layout::e($v) ?></option><?php endforeach; ?>
@@ -145,6 +155,7 @@ Layout::start([
     <span>已选 <strong data-bulk-count>0</strong> 个客户</span>
     <?php if ($can['assign']): ?><button type="button" class="btn btn-sm" data-bulk-open="d-assign">分配负责人</button><?php endif; ?>
     <?php if ($can['public'] && $tab !== 'public'): ?><button type="button" class="btn btn-sm" data-bulk-open="d-public">转入公海</button><?php endif; ?>
+    <?php if ($can['groups'] && $groupOptions): ?><button type="button" class="btn btn-sm" data-bulk-open="d-groups">分组</button><?php endif; ?>
     <?php if ($can['merge']): ?><button type="button" class="btn btn-sm" data-bulk-open="d-merge" data-min="2" data-max="10">合并</button><?php endif; ?>
     <button type="button" class="btn btn-sm btn-ghost" data-bulk-clear>取消选择</button>
   </div>
@@ -255,6 +266,24 @@ Layout::start([
       <div class="span-2"><?= \Artdon\Centers\Base\Form::input('note', '说明', '', [], ['prefix' => 'a', 'maxlength' => 200, 'hint' => '可不填，会写进客户日志并通知负责人']) ?></div>
     </div>
     <div class="dialog-foot"><button type="button" class="btn" data-close-dialog>取消</button><button type="submit" class="btn btn-primary">分配</button></div>
+  </form>
+</dialog>
+<?php endif; ?>
+
+<?php if ($bulk && $can['groups'] && $groupOptions): ?>
+<dialog class="dialog dialog-sm" id="d-groups" aria-labelledby="d-groups-title">
+  <form data-api action="<?= Layout::e($api) ?>?action=group_apply">
+    <div class="dialog-head"><h2 class="dialog-title" id="d-groups-title">调整分组</h2><button type="button" class="icon-btn" data-close-dialog aria-label="关闭">×</button></div>
+    <div class="dialog-body stack">
+      <p class="alert alert-error form-error" data-form-error hidden></p>
+      <p style="margin:0">选中的 <strong data-bulk-count>0</strong> 个客户：</p>
+      <div data-bulk-ids hidden></div>
+      <?= \Artdon\Centers\Base\Form::select('group_id', '分组', $groupOptions, '', [], ['prefix' => 'gp', 'required' => true, 'placeholder' => '请选择分组']) ?>
+      <fieldset class="field check-group"><legend class="field-label">怎么调整</legend>
+        <?php $first = true; foreach (GroupService::MODES as $k => $v): ?><label class="check"><input type="radio" name="mode" value="<?= Layout::e($k) ?>"<?= $first ? ' checked' : '' ?>><span><?= Layout::e($v) ?></span></label><?php $first = false; endforeach; ?>
+      </fieldset>
+    </div>
+    <div class="dialog-foot"><button type="button" class="btn" data-close-dialog>取消</button><button type="submit" class="btn btn-primary">确定</button></div>
   </form>
 </dialog>
 <?php endif; ?>

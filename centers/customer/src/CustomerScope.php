@@ -55,7 +55,7 @@ final class CustomerScope
             }
         }
         if ($scope['group_ids']) {
-            $parts[] = 'EXISTS (SELECT 1 FROM crm_customer_group_relations sgr WHERE sgr.customer_id = ' . $alias . '.id AND sgr.group_id IN (' . implode(',', array_fill(0, count($scope['group_ids']), '?')) . '))';
+            $parts[] = 'EXISTS (SELECT 1 FROM crm_customer_group_relations sgr JOIN crm_customer_groups sg ON sg.id = sgr.group_id AND sg.deleted_at IS NULL WHERE sgr.customer_id = ' . $alias . '.id AND sgr.group_id IN (' . implode(',', array_fill(0, count($scope['group_ids']), '?')) . '))';
             foreach ($scope['group_ids'] as $id) {
                 $params[] = $id;
             }

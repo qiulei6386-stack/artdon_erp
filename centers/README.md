@@ -55,6 +55,7 @@ cd /www/wwwroot/Artdon/artdon_erp && php centers/_base/tools/init_config.php
 - 通知：`/artdon_erp/centers/system/notifications.php`（顶栏铃铛进入；只显示新系统发出的通知）
 - 客户中心：`/artdon_erp/centers/customer/index.php`（我的客户 / 全部客户 / 公海 / 已删除；详情 `view.php?id=`）
 - 客户暂存池：`/artdon_erp/centers/customer/leads.php`（查看 `customer.lead_pool_view`，处理 `customer.lead_pool`）
+- 客户分组：`/artdon_erp/centers/customer/groups.php`（管理需要 `customer.batch`）
 
 ## 底座公共件（给各业务中心用）
 

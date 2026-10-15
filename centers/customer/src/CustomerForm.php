@@ -50,6 +50,11 @@ final class CustomerForm
         $h .= Form::select('lifecycle_key', '阶段', $lifes, $life, [], $p + ($lifes ? ['placeholder' => '默认'] : []));
         $h .= self::checks('source_tags', '来源', $o['source'], (array) ($c['source_tags'] ?? []), $prefix);
         $h .= self::checks('promotion_channels', '推广方式', $o['promotion_channel'], (array) ($c['promotion_channels'] ?? []), $prefix);
+        $groups = GroupService::options();
+        if ($groups) {
+            $current = array_map('strval', array_map('intval', array_column((array) ($c['groups'] ?? []), 'id')));
+            $h .= self::checks('group_ids', '分组', array_combine(array_map('strval', array_keys($groups)), array_values($groups)), $current, $prefix);
+        }
         $h .= '<div class="span-2">' . Form::textarea('remark', '备注', (string) ($c['remark'] ?? ''), [], $p + ['maxlength' => 5000]) . '</div>';
         return $h;
     }

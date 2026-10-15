@@ -36,6 +36,18 @@ final class CustomerLog
         'followup_update' => '编辑跟进',
         'followup_delete' => '删除跟进',
         'address_save' => '保存地址',
+        'address_delete' => '删除地址',
+        'address_create' => '新增地址',
+        'address_update' => '编辑地址',
+        'chat_group_create' => '新增聊天群',
+        'chat_group_update' => '编辑聊天群',
+        'chat_group_delete' => '删除聊天群',
+        'customer_relation' => '新增客户关系',
+        'customer_relation_delete' => '删除客户关系',
+        'group_create' => '新建分组',
+        'group_update' => '编辑分组',
+        'group_delete' => '删除分组',
+        'group_move_customers' => '调整分组',
         'tag_save' => '修改标签',
     ];
 

@@ -109,6 +109,7 @@ final class CustomerMerger
                 $this->pdo->prepare('UPDATE crm_customers SET ' . $set . ' WHERE id = ?')->execute($params);
             }
             $this->fixPrimaryContact($masterId);
+            $this->fixPrimaryAddress($masterId);
             $this->fixOwners($masterId, (int) ($master['owner_user_id'] ?? 0));
             $this->pdo->prepare('UPDATE crm_customers SET updated_by = ?, updated_at = ? WHERE id = ?')->execute([$me, $now, $masterId]);
             if (Db::tableExists('crm_duplicate_merge_cases')) {
@@ -231,6 +232,17 @@ final class CustomerMerger
         if (count($ids) > 1) {
             $keep = array_shift($ids);
             $this->pdo->prepare('UPDATE crm_contacts SET is_primary = 0 WHERE customer_id = ? AND id <> ?')->execute([$masterId, $keep]);
+        }
+    }
+
+    /** 合并后可能有多个主地址：保留最早的那个。 */
+    private function fixPrimaryAddress(int $masterId): void
+    {
+        $stmt = $this->pdo->prepare('SELECT id FROM crm_customer_addresses WHERE customer_id = ? AND is_primary = 1 AND deleted_at IS NULL ORDER BY id ASC');
+        $stmt->execute([$masterId]);
+        $ids = array_map('intval', $stmt->fetchAll(PDO::FETCH_COLUMN));
+        if (count($ids) > 1) {
+            $this->pdo->prepare('UPDATE crm_customer_addresses SET is_primary = 0 WHERE customer_id = ? AND id <> ?')->execute([$masterId, $ids[0]]);
         }
     }
 
