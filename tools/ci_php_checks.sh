@@ -123,6 +123,7 @@ contract_tests=(
   centers/customer/tests/customer_contract.php
   centers/customer/tests/leads_merge_contract.php
   centers/customer/tests/details_contract.php
+  centers/customer/tests/import_export_contract.php
 )
 
 contract_passed=0

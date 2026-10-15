@@ -353,7 +353,7 @@ final class CustomerService
             $this->assertUnique($data, 0);
         }
         if ($toPool) {
-            $leadId = $this->createLead($data, $contact, $primaryId, $assistantIds, $matches);
+            $leadId = $this->createLead($data, $contact ? [$contact] : [], $primaryId, $assistantIds, $matches, '新系统客户中心');
             return ['status' => 'lead_pool', 'lead_id' => $leadId, 'matches' => $matches, 'reason' => $reason];
         }
         $id = $this->insertCustomer($data, $contact ? [$contact] : [], $primaryId, $assistantIds);
@@ -365,7 +365,7 @@ final class CustomerService
      *
      * @param list<array<string, string>> $contacts 已校验的联系人，第一个为主联系人
      */
-    public function createConfirmed(array $input, array $contacts, int $defaultOwner = 0): int
+    public function createConfirmed(array $input, array $contacts, int $defaultOwner = 0, string $how = '从暂存池确认入库'): int
     {
         if (!$this->can('customer.create')) {
             throw new PermissionException('没有新建客户的权限（customer.create）');
@@ -373,19 +373,46 @@ final class CustomerService
         $data = $this->validate($input, null);
         [$primaryId, $assistantIds] = $this->ownerInput($input, $defaultOwner);
         $this->assertUnique($data, 0);
-        return $this->insertCustomer($data, $contacts, $primaryId, $assistantIds, '从暂存池确认入库');
+        return $this->insertCustomer($data, $contacts, $primaryId, $assistantIds, $how);
     }
 
     /** @return int 暂存池记录编号 */
-    private function createLead(array $data, ?array $contact, int $primaryId, array $assistantIds, array $matches): int
+    /**
+     * 放进暂存池（导入等场景用）。资料格式与新建时一致。
+     *
+     * @param list<array<string, string>> $contacts
+     * @param list<int> $assistantIds
+     * @param list<array<string, mixed>> $matches
+     */
+    public function submitLead(array $input, array $contacts, int $primaryId, array $assistantIds, array $matches, string $source): int
     {
+        if (!$this->can('customer.create')) {
+            throw new PermissionException('没有新建客户的权限（customer.create）');
+        }
+        $data = $this->validate($input, null);
+        return $this->createLead($data, $contacts, $primaryId, $assistantIds, $matches, $source);
+    }
+
+    /** @param list<array<string, string>> $contacts */
+    private function createLead(array $data, array $contacts, int $primaryId, array $assistantIds, array $matches, string $source): int
+    {
+        $contact = $contacts[0] ?? null;
         $payload = $data;
         $payload['source'] = $data['source_tags'][0] ?? '';
         $payload['owner_user_id'] = $primaryId;
         $payload['owner_user_ids'] = array_values(array_merge([$primaryId], $assistantIds));
-        $payload['entry_source'] = '新系统客户中心';
-        if ($contact) {
-            $payload['contacts'] = [$contact + ['is_primary' => 1]];
+        $payload['entry_source'] = $source;
+        if ($contacts) {
+            $payload['contacts'] = array_values(array_map(static function (array $c, int $i): array {
+                return $c + ['is_primary' => $i === 0 ? 1 : 0];
+            }, $contacts, array_keys($contacts)));
+        }
+        $groups = $this->groupInput();
+        if ($groups) {
+            $payload['group_ids'] = $groups;
+        }
+        if (isset($this->lastInput['business_card_token']) && is_string($this->lastInput['business_card_token'])) {
+            $payload['business_card_token'] = $this->lastInput['business_card_token'];
         }
         $now = Db::now();
         $this->pdo->prepare('INSERT INTO crm_lead_pool (raw_name, raw_email, raw_phone, raw_country, raw_domain, payload_json, similarity_matches_json, status, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, \'pending\', ?, ?, ?)')
@@ -432,6 +459,14 @@ final class CustomerService
         } catch (Throwable $e) {
             $this->pdo->rollBack();
             throw $e;
+        }
+        $card = $this->lastInput['business_card_token'] ?? '';
+        if (is_string($card) && $card !== '') {
+            try {
+                (new BusinessCard($this->operator, $this->pdo))->attach($id, $card);
+            } catch (Throwable $e) {
+                // 名片图保存失败不影响客户已经建好
+            }
         }
         CustomerLog::write('customer_create', $id, $how, $data['customer_name'], null, ['customer' => $data, 'owner_user_id' => $primaryId, 'assistant_ids' => $assistantIds, 'contacts' => $contacts], $this->operator);
         if ($primaryId !== $me) {

@@ -209,8 +209,55 @@
     }, true);
   }
 
+  /* ---------- 新建客户：识别名片后填表 ---------- */
+  function initCardScan() {
+    var box = document.querySelector('[data-card-scan]');
+    if (!box) return;
+    var input = box.querySelector('[data-card-file]');
+    var status = box.querySelector('[data-card-status]');
+    var token = box.querySelector('[data-card-token]');
+    var form = box.closest('form');
+    function set(name, value) {
+      if (!value) return;
+      var el = form.querySelector('[name="' + name + '"]');
+      if (!el) return;
+      if (el.tagName === 'SELECT') {
+        var has = Array.prototype.some.call(el.options, function (o) { return o.value === value; });
+        if (!has) return;
+      }
+      el.value = value;
+    }
+    input.addEventListener('change', function () {
+      var file = input.files && input.files[0];
+      if (!file) return;
+      status.textContent = '正在识别……';
+      var data = new FormData();
+      data.append('card', file);
+      fetch(box.getAttribute('data-api-url'), { method: 'POST', body: data, credentials: 'same-origin', headers: { 'Accept': 'application/json', 'X-CSRF-Token': window.Centers.csrfToken() } })
+        .then(function (r) { return r.json().catch(function () { return { success: false, message: '服务器返回格式错误' }; }); })
+        .then(function (result) {
+          input.value = '';
+          if (!result.success) {
+            var errors = (result.data && result.data.errors) || {};
+            status.textContent = errors.card || result.message || '识别失败';
+            return;
+          }
+          var c = result.data.customer || {};
+          var p = result.data.contact || {};
+          set('customer_name', c.customer_name); set('customer_name_en', c.customer_name_en); set('country', c.country);
+          set('address', c.address); set('website', c.website); set('email', c.email); set('phone', c.phone);
+          set('contact_name', p.name); set('contact_position', p.position); set('contact_email', p.email); set('contact_phone', p.phone);
+          token.value = result.data.token || '';
+          status.textContent = '已识别并填好，请核对。' + (c.country ? '' : '国家没有认出来，请手动选择。');
+        })
+        .catch(function () { status.textContent = '网络错误，请重试'; });
+    });
+    form.closest('dialog').addEventListener('close', function () { token.value = ''; status.textContent = '拍一张名片照片，自动填好客户和联系人'; });
+  }
+
   document.addEventListener('DOMContentLoaded', function () {
     initSwitchAction();
+    initCardScan();
     initBulk();
     initCreate();
     initCheckValues();

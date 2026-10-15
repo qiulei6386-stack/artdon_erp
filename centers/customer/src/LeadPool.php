@@ -146,6 +146,9 @@ final class LeadPool
         $customers = new CustomerService($this->operator, $this->pdo);
         $this->lock($id, 'confirmed');
         try {
+            if ($lead['business_card_token'] !== '' && !isset($input['business_card_token'])) {
+                $input['business_card_token'] = $lead['business_card_token'];
+            }
             $customerId = $customers->createConfirmed($input, $lead['contacts'], $owner);
         } catch (Throwable $e) {
             $this->pdo->prepare("UPDATE crm_lead_pool SET status = 'pending' WHERE id = ? AND status = 'confirmed' AND target_customer_id IS NULL")->execute([$id]);
@@ -318,7 +321,12 @@ final class LeadPool
             $ids = $list($p['owner_user_ids']);
             $owner = (int) ($ids[0] ?? 0);
         }
-        return ['fields' => $fields, 'contacts' => $contacts, 'owner_user_id' => $owner, 'source_name' => $source, 'skipped_contacts' => $skipped];
+        $groupIds = $list($p['group_ids'] ?? []);
+        $fields['groups'] = array_map(static function (string $g): array {
+            return ['id' => (int) $g];
+        }, $groupIds);
+        $card = is_string($p['business_card_token'] ?? null) ? (string) $p['business_card_token'] : '';
+        return ['fields' => $fields, 'contacts' => $contacts, 'owner_user_id' => $owner, 'source_name' => $source, 'skipped_contacts' => $skipped, 'business_card_token' => $card];
     }
 
     /**

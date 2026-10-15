@@ -60,6 +60,8 @@ function customer_test_schema(PDO $pdo): void
         'CREATE TABLE crm_duplicate_merge_cases (id INTEGER PRIMARY KEY AUTOINCREMENT, master_customer_id INTEGER NULL, duplicate_customer_ids_json TEXT NULL, match_type VARCHAR(80) NOT NULL DEFAULT \'\',
             similarity_score INTEGER NOT NULL DEFAULT 0, status VARCHAR(40) NOT NULL DEFAULT \'pending\', merge_plan_json TEXT NULL, merged_by INTEGER NULL, merged_at DATETIME NULL, created_by INTEGER NULL,
             created_at DATETIME NULL, updated_at DATETIME NULL)',
+        'CREATE TABLE crm_customer_files (id INTEGER PRIMARY KEY AUTOINCREMENT, customer_id INTEGER NOT NULL, file_name VARCHAR(190) NOT NULL, file_path VARCHAR(500) NOT NULL, file_type VARCHAR(80) NULL,
+            file_size INTEGER NOT NULL DEFAULT 0, category VARCHAR(80) NULL, remark VARCHAR(500) NULL, uploaded_by INTEGER NULL, created_at DATETIME NULL, deleted_at DATETIME NULL, deleted_by INTEGER NULL)',
         // 其他模块的表（只放合并客户会动到的字段）
         'CREATE TABLE crm_mails (id INTEGER PRIMARY KEY AUTOINCREMENT, subject VARCHAR(190) NULL, linked_customer_id INTEGER NULL)',
         'CREATE TABLE quote_orders (id INTEGER PRIMARY KEY AUTOINCREMENT, customer_id VARCHAR(40) NULL)',

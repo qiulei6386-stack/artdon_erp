@@ -8,7 +8,9 @@ require_once __DIR__ . '/bootstrap.php';
 use Artdon\Centers\Base\Api;
 use Artdon\Centers\Base\Flash;
 use Artdon\Centers\Base\Url;
+use Artdon\Centers\Customer\BusinessCard;
 use Artdon\Centers\Customer\ContactService;
+use Artdon\Centers\Customer\CustomerImport;
 use Artdon\Centers\Customer\CustomerDetails;
 use Artdon\Centers\Customer\CustomerMerger;
 use Artdon\Centers\Customer\GroupService;
@@ -182,5 +184,20 @@ Api::run([
         (new CustomerDetails($user))->deleteRelation($id($input, 'customer_id'), $id($input));
         Flash::set('success', '客户关系已删除。');
         return ['message' => '已删除'];
+    }],
+    'import_commit' => ['method' => 'POST', 'handler' => static function (array $input, array $user): array {
+        $token = (string) ($input['token'] ?? '');
+        $sum = (new CustomerImport($user))->commit($token);
+        Flash::set($sum['failed'] ? 'warning' : 'success', '导入完成：新建 ' . $sum['created'] . ' 个' . ($sum['lead_pool'] ? '，进暂存池 ' . $sum['lead_pool'] . ' 个' : '') . ($sum['failed'] ? '，失败 ' . $sum['failed'] . ' 个' : '') . '。');
+        return ['message' => '已导入', 'redirect' => Url::center('customer', 'import.php?token=' . $token)];
+    }],
+    'card_ocr' => ['method' => 'POST', 'handler' => static function (array $input, array $user): array {
+        $r = (new BusinessCard($user))->recognize($_FILES['card'] ?? []);
+        return ['customer' => $r['customer'], 'contact' => $r['contact'], 'raw' => $r['raw'], 'token' => $r['token'], 'message' => '识别完成'];
+    }],
+    'card_delete' => ['method' => 'POST', 'handler' => static function (array $input, array $user) use ($id): array {
+        $customerId = (new BusinessCard($user))->delete($id($input));
+        Flash::set('success', '名片图片已删除。');
+        return ['message' => '已删除', 'redirect' => Url::center('customer', 'view.php?id=' . $customerId)];
     }],
 ]);

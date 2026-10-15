@@ -99,6 +99,8 @@ Layout::start([
   </div>
   <div class="page-actions">
     <a class="btn" href="<?= Layout::e(Url::center('customer', 'groups.php')) ?>">分组</a>
+    <?php if ($service->can('customer.import')): ?><a class="btn" href="<?= Layout::e(Url::center('customer', 'import.php')) ?>">导入</a><?php endif; ?>
+    <?php if ($service->can('customer.export') && $tab !== 'deleted'): ?><a class="btn" href="<?= Layout::e(Url::center('customer', 'export.php') . '?' . http_build_query(array_filter(['tab' => $tab] + $filters))) ?>" title="按当前标签和筛选导出">导出</a><?php endif; ?>
     <?php if ($can['leads']): ?><a class="btn" href="<?= Layout::e(Url::center('customer', 'leads.php')) ?>">暂存池<?= $leadCount ? ' <span class="tab-count">' . $leadCount . '</span>' : '' ?></a><?php endif; ?>
     <?php if ($can['create']): ?><button type="button" class="btn btn-primary" data-open-dialog="d-create">新建客户</button><?php endif; ?>
   </div>
@@ -229,6 +231,12 @@ Layout::start([
   <form data-api action="<?= Layout::e($api) ?>?action=customer_create" data-create-form>
     <div class="dialog-head"><h2 class="dialog-title" id="d-create-title">新建客户</h2><button type="button" class="icon-btn" data-close-dialog aria-label="关闭">×</button></div>
     <div class="dialog-body">
+      <div class="card-scan" data-card-scan data-api-url="<?= Layout::e($api) ?>?action=card_ocr">
+        <label class="btn btn-sm" for="c-card-file">识别名片</label>
+        <input id="c-card-file" type="file" accept="image/jpeg,image/png" hidden data-card-file>
+        <span class="muted" data-card-status>拍一张名片照片，自动填好客户和联系人（腾讯云识别，照片会保存到客户资料里）</span>
+        <input type="hidden" name="business_card_token" value="" data-card-token>
+      </div>
       <div class="form-grid" data-create-fields>
         <?= CustomerForm::fields($defaults, 'c') ?>
         <?php if ($can['assign']): ?>

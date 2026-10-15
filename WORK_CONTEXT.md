@@ -1,5 +1,17 @@
 # Artdon ERP 工作上下文
 
+## 2026-10-15：客户中心第二批（三）· 导入、导出、名片识别（新系统）
+
+- 上一步：PR #22 第二批（二），服务器 `d4d51fb`（已确认部署成功）。
+- 本次完成：
+  - 导入 `centers/customer/import.php`：上传 .xlsx / .csv（UTF-8 或 GBK；服务器没有 ZipArchive 时用内置解压读 .xlsx）→ 逐行检查（名称、国家必填，国家/等级/阶段/来源/推广方式按中文、英文或代码认，分组按名称，负责人按姓名或账号且需要分配权限，联系人 1-3，已有同名、客户代码重复、文件内重复不导入，疑似重复给提示）→ 确认导入。高度疑似重复按查重规则进暂存池或不导入；准入规则为“只有导入的进暂存池”时全部进暂存池。预览存在服务器临时目录，2 小时有效、只有上传人能用、同一份不能导入两次。可下载模板。需要 `customer.import`。
+  - 导出：客户列表“导出”按当前标签和筛选导出看得到的客户为 CSV（UTF-8 带 BOM，Excel 直接打开；表头与导入一致，可改后再导入；防公式注入；最多 2 万个）。需要 `customer.export`。导入、导出都写客户日志和敏感审计。
+  - 名片识别：新建客户弹窗“识别名片”，调用腾讯云名片识别（密钥读服务器 `/www/server/artdon_secrets/tencent_ocr.php`，签名方式同旧系统），自动填客户和主联系人；照片压到 1MB 内暂存在 `storage/customer_files/pending_business_cards`，建客户时移到 `storage/customer_files/{客户编号}/` 并记 `crm_customer_files`（category=business_card）；进暂存池的，确认入库时一起存。详情概览显示名片图（跟着客户可见范围），`customer.file_delete` 可删除。
+- 修改文件：`centers/customer/{import.php,export.php,card.php,index.php,view.php,lead.php,api.php}`、`centers/customer/src/{Spreadsheet,CustomerImport,CustomerExport,BusinessCard,CustomerService,LeadPool,CustomerLog}.php`、`centers/customer/assets/*`、`centers/customer/tests/{import_export_contract,schema}.php`、`centers/README.md`、`tools/ci_php_checks.sh`、本文件。
+- 检查结果：`import_export_contract.php` 60 项（含 GBK、Excel、无 ZipArchive 解压、导入规则、导出范围、名片解析与签名、名片文件权限）及客户中心前三组契约全部通过；本地浏览器导入导出 10 项及其他九组全部通过；`tools/ci_php_checks.sh` 契约 86 项全部通过；`tools/ci_js_checks.sh` 26 项通过。
+- 待用户验证：正式环境名片识别（需要服务器上已有腾讯云密钥文件，旧系统在用应该已有）。
+- 尚未完成 / 下一步：客户中心第三批（详情里的邮件、报价、订单等汇总，等对应中心做好再接）；按原计划下一个是邮箱系统。
+
 ## 2026-10-15：客户中心第二批（二）· 分组、多地址、聊天群、客户关系（新系统）
 
 - 上一步：PR #21 第二批（一）暂存池与合并，服务器 `f01a45e`（已确认部署成功）。
