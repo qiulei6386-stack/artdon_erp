@@ -15,6 +15,7 @@ use Artdon\Centers\Customer\Country;
 use Artdon\Centers\Customer\CustomerForm;
 use Artdon\Centers\Customer\CustomerScope;
 use Artdon\Centers\Customer\CustomerService;
+use Artdon\Centers\Customer\LeadPool;
 use Artdon\Centers\Customer\RuleConfig;
 
 $user = Auth::requirePage();
@@ -51,8 +52,11 @@ $can = [
     'public' => $service->can('customer.transfer_public'),
     'claim' => $service->can('customer.claim_public'),
     'restore' => $service->can('customer.restore'),
+    'merge' => $service->can('customer.merge'),
+    'leads' => LeadPool::canView($user),
 ];
-$bulk = in_array($tab, ['mine', 'all', 'public'], true) && ($can['assign'] || ($can['public'] && $tab !== 'public'));
+$leadCount = $can['leads'] ? (new LeadPool($user))->counts()['pending'] : 0;
+$bulk = in_array($tab, ['mine', 'all', 'public'], true) && ($can['assign'] || $can['merge'] || ($can['public'] && $tab !== 'public'));
 $options = CustomerService::options();
 $lifeBadge = static function (string $key): string {
     $map = ['deal' => 'badge-good', 'quoting' => 'badge-brand', 'sampling' => 'badge-brand', 'key_follow' => 'badge-brand', 'official' => 'badge-good', 'sleeping' => 'badge-muted', 'lost' => 'badge-bad', 'blacklist' => 'badge-bad'];
@@ -90,9 +94,10 @@ Layout::start([
     <h1 class="page-title">客户中心</h1>
     <p class="page-sub">你能看到的范围：<?= Layout::e(CustomerScope::describe($user)) ?>。新建客户按准入规则：<?= Layout::e(RuleConfig::ADMISSION_LABELS[RuleConfig::admissionMode()] ?? '') ?>。</p>
   </div>
-  <?php if ($can['create']): ?>
-  <div class="page-actions"><button type="button" class="btn btn-primary" data-open-dialog="d-create">新建客户</button></div>
-  <?php endif; ?>
+  <div class="page-actions">
+    <?php if ($can['leads']): ?><a class="btn" href="<?= Layout::e(Url::center('customer', 'leads.php')) ?>">暂存池<?= $leadCount ? ' <span class="tab-count">' . $leadCount . '</span>' : '' ?></a><?php endif; ?>
+    <?php if ($can['create']): ?><button type="button" class="btn btn-primary" data-open-dialog="d-create">新建客户</button><?php endif; ?>
+  </div>
 </div>
 
 <nav class="tabs" aria-label="客户分类">
@@ -140,6 +145,7 @@ Layout::start([
     <span>已选 <strong data-bulk-count>0</strong> 个客户</span>
     <?php if ($can['assign']): ?><button type="button" class="btn btn-sm" data-bulk-open="d-assign">分配负责人</button><?php endif; ?>
     <?php if ($can['public'] && $tab !== 'public'): ?><button type="button" class="btn btn-sm" data-bulk-open="d-public">转入公海</button><?php endif; ?>
+    <?php if ($can['merge']): ?><button type="button" class="btn btn-sm" data-bulk-open="d-merge" data-min="2" data-max="10">合并</button><?php endif; ?>
     <button type="button" class="btn btn-sm btn-ghost" data-bulk-clear>取消选择</button>
   </div>
   <?php endif; ?>
@@ -174,7 +180,7 @@ Layout::start([
           [$fText, $fClass] = $followText($row['last_followup'] ?? null);
           $assistants = count($row['assistants']); ?>
         <tr>
-          <?php if ($bulk): ?><td><label class="check"><input type="checkbox" value="<?= $cid ?>" data-row-check aria-label="选择 <?= Layout::e((string) $row['customer_name']) ?>"></label></td><?php endif; ?>
+          <?php if ($bulk): ?><td><label class="check"><input type="checkbox" value="<?= $cid ?>" data-row-check data-name="<?= Layout::e((string) $row['customer_name']) ?>" aria-label="选择 <?= Layout::e((string) $row['customer_name']) ?>"></label></td><?php endif; ?>
           <td class="cell-main">
             <a class="row-link" href="<?= Layout::e(Url::center('customer', 'view.php?id=' . $cid)) ?>"><?= Layout::e((string) $row['customer_name']) ?></a>
             <?php if (!empty($row['do_not_contact'])): ?><span class="badge badge-bad">勿联系</span><?php endif; ?>
@@ -249,6 +255,22 @@ Layout::start([
       <div class="span-2"><?= \Artdon\Centers\Base\Form::input('note', '说明', '', [], ['prefix' => 'a', 'maxlength' => 200, 'hint' => '可不填，会写进客户日志并通知负责人']) ?></div>
     </div>
     <div class="dialog-foot"><button type="button" class="btn" data-close-dialog>取消</button><button type="submit" class="btn btn-primary">分配</button></div>
+  </form>
+</dialog>
+<?php endif; ?>
+
+<?php if ($bulk && $can['merge']): ?>
+<dialog class="dialog" id="d-merge" aria-labelledby="d-merge-title">
+  <form data-api action="<?= Layout::e($api) ?>?action=customer_merge">
+    <div class="dialog-head"><h2 class="dialog-title" id="d-merge-title">合并客户</h2><button type="button" class="icon-btn" data-close-dialog aria-label="关闭">×</button></div>
+    <div class="dialog-body stack">
+      <p class="alert alert-error form-error" data-form-error hidden></p>
+      <div data-bulk-ids hidden></div>
+      <p style="margin:0">选一个要<strong>保留</strong>的主客户。其他客户的联系人、地址、跟进、拜访、商机、邮件、报价订单等记录都会转到主客户，负责人变成主客户的协助负责人，然后其他客户被删除（可在“已删除”里看到）。主客户空着的资料会用其他客户的补上。</p>
+      <fieldset class="field check-group" data-merge-list><legend class="field-label">保留哪个</legend></fieldset>
+      <p class="alert alert-warning" style="margin:0">合并后不能撤销，请确认是同一个客户。</p>
+    </div>
+    <div class="dialog-foot"><button type="button" class="btn" data-close-dialog>取消</button><button type="submit" class="btn btn-danger">合并</button></div>
   </form>
 </dialog>
 <?php endif; ?>

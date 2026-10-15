@@ -32,3 +32,4 @@
 @media (max-width: 600px) {
   .dl-wide { grid-template-columns: 80px minmax(0, 1fr); }
 }
+.check-group > .check { display: flex; margin: 4px 0; white-space: normal; }

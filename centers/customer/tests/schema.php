@@ -52,6 +52,17 @@ function customer_test_schema(PDO $pdo): void
             before_json TEXT NULL, after_json TEXT NULL, ip_address VARCHAR(64) NULL, user_agent VARCHAR(500) NULL, created_at DATETIME NULL)',
         'CREATE TABLE crm_rule_configs (id INTEGER PRIMARY KEY AUTOINCREMENT, rule_key VARCHAR(120) NOT NULL UNIQUE, rule_name VARCHAR(190) NULL, rule_group VARCHAR(80) NULL, config_json TEXT NULL,
             is_enabled INTEGER NOT NULL DEFAULT 1, created_at DATETIME NULL, updated_at DATETIME NULL)',
+        'CREATE TABLE crm_customer_relations (id INTEGER PRIMARY KEY AUTOINCREMENT, customer_id INTEGER NOT NULL, related_customer_id INTEGER NOT NULL, relation_type VARCHAR(120) NOT NULL, remark VARCHAR(500) NULL,
+            created_by INTEGER NULL, created_at DATETIME NULL, updated_at DATETIME NULL, UNIQUE (customer_id, related_customer_id, relation_type))',
+        'CREATE TABLE crm_customer_chat_groups (id INTEGER PRIMARY KEY AUTOINCREMENT, customer_id INTEGER NOT NULL, group_name VARCHAR(190) NOT NULL, group_platform VARCHAR(20) NOT NULL DEFAULT \'wechat_group\',
+            group_owner VARCHAR(120) NULL, linked_contact_ids_json TEXT NULL, use_for_promotion INTEGER NOT NULL DEFAULT 1, status VARCHAR(20) NOT NULL DEFAULT \'active\', remark VARCHAR(500) NULL,
+            last_promoted_at DATETIME NULL, created_by INTEGER NULL, updated_by INTEGER NULL, created_at DATETIME NULL, updated_at DATETIME NULL, deleted_at DATETIME NULL, deleted_by INTEGER NULL)',
+        'CREATE TABLE crm_duplicate_merge_cases (id INTEGER PRIMARY KEY AUTOINCREMENT, master_customer_id INTEGER NULL, duplicate_customer_ids_json TEXT NULL, match_type VARCHAR(80) NOT NULL DEFAULT \'\',
+            similarity_score INTEGER NOT NULL DEFAULT 0, status VARCHAR(40) NOT NULL DEFAULT \'pending\', merge_plan_json TEXT NULL, merged_by INTEGER NULL, merged_at DATETIME NULL, created_by INTEGER NULL,
+            created_at DATETIME NULL, updated_at DATETIME NULL)',
+        // 其他模块的表（只放合并客户会动到的字段）
+        'CREATE TABLE crm_mails (id INTEGER PRIMARY KEY AUTOINCREMENT, subject VARCHAR(190) NULL, linked_customer_id INTEGER NULL)',
+        'CREATE TABLE quote_orders (id INTEGER PRIMARY KEY AUTOINCREMENT, customer_id VARCHAR(40) NULL)',
     ];
     foreach ($tables as $sql) {
         $pdo->exec($sql);

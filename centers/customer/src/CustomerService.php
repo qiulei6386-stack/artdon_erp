@@ -351,8 +351,24 @@ final class CustomerService
             $leadId = $this->createLead($data, $contact, $primaryId, $assistantIds, $matches);
             return ['status' => 'lead_pool', 'lead_id' => $leadId, 'matches' => $matches, 'reason' => $reason];
         }
-        $id = $this->insertCustomer($data, $contact, $primaryId, $assistantIds);
+        $id = $this->insertCustomer($data, $contact ? [$contact] : [], $primaryId, $assistantIds);
         return ['status' => 'created', 'id' => $id, 'matches' => $matches];
+    }
+
+    /**
+     * 暂存池确认入库：用户已经看过疑似重复，直接建成正式客户（同名、客户代码仍不能重复）。
+     *
+     * @param list<array<string, string>> $contacts 已校验的联系人，第一个为主联系人
+     */
+    public function createConfirmed(array $input, array $contacts, int $defaultOwner = 0): int
+    {
+        if (!$this->can('customer.create')) {
+            throw new PermissionException('没有新建客户的权限（customer.create）');
+        }
+        $data = $this->validate($input, null);
+        [$primaryId, $assistantIds] = $this->ownerInput($input, $defaultOwner);
+        $this->assertUnique($data, 0);
+        return $this->insertCustomer($data, $contacts, $primaryId, $assistantIds, '从暂存池确认入库');
     }
 
     /** @return int 暂存池记录编号 */
@@ -378,7 +394,7 @@ final class CustomerService
         return $leadId;
     }
 
-    private function insertCustomer(array $data, ?array $contact, int $primaryId, array $assistantIds): int
+    private function insertCustomer(array $data, array $contacts, int $primaryId, array $assistantIds, string $how = '新建客户'): int
     {
         $now = Db::now();
         $me = (int) $this->operator['id'];
@@ -399,15 +415,16 @@ final class CustomerService
             $status = (string) RuleConfig::defaultValue('promotion_status', Dictionary::defaultKey('promotion_status', 'not_promoted'));
             $this->pdo->prepare('INSERT INTO crm_customer_promotion_status (customer_id, status, updated_by, updated_at) VALUES (?, ?, ?, ?)')->execute([$id, $status, $me, $now]);
             $this->saveOwners($id, $primaryId, $assistantIds);
-            if ($contact) {
-                (new ContactService($this->operator, $this->pdo))->insert($id, $contact + ['is_primary' => 1], false);
+            $contactService = new ContactService($this->operator, $this->pdo);
+            foreach (array_values($contacts) as $i => $contact) {
+                $contactService->insert($id, $contact + ['is_primary' => $i === 0 ? 1 : 0], false);
             }
             $this->pdo->commit();
         } catch (Throwable $e) {
             $this->pdo->rollBack();
             throw $e;
         }
-        CustomerLog::write('customer_create', $id, '新建客户', $data['customer_name'], null, ['customer' => $data, 'owner_user_id' => $primaryId, 'assistant_ids' => $assistantIds, 'contact' => $contact], $this->operator);
+        CustomerLog::write('customer_create', $id, $how, $data['customer_name'], null, ['customer' => $data, 'owner_user_id' => $primaryId, 'assistant_ids' => $assistantIds, 'contacts' => $contacts], $this->operator);
         if ($primaryId !== $me) {
             Notify::send([$primaryId], 'customer_assigned', '你被设为客户负责人：' . $data['customer_name'], '由 ' . Auth::displayName($this->operator) . ' 新建并分配给你', ['center' => 'customer', 'path' => 'view.php?id=' . $id]);
         }
@@ -766,11 +783,11 @@ final class CustomerService
     }
 
     /** @return array{0: int, 1: list<int>} */
-    private function ownerInput(array $input): array
+    private function ownerInput(array $input, int $defaultOwner = 0): array
     {
         $me = (int) $this->operator['id'];
         if (!$this->can('customer.assign')) {
-            return [$me, []];
+            return [$defaultOwner > 0 && UserDirectory::isActive($defaultOwner) ? $defaultOwner : $me, []];
         }
         $primary = (int) ($input['owner_user_id'] ?? 0) ?: $me;
         $assistants = $input['assistant_ids'] ?? [];
@@ -810,6 +827,12 @@ final class CustomerService
         if ($errors) {
             throw new ValidationException($errors);
         }
+    }
+
+    /** 能看到的未删除客户的原始资料（看不到抛 NotFoundException）。 @return array<string, mixed> */
+    public function find(int $id): array
+    {
+        return $this->visibleRow($id, false);
     }
 
     /** 找到一个能看的客户（本人范围内，或公海且有权看公海）。 @return array<string, mixed> */

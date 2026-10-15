@@ -26,6 +26,9 @@ final class CustomerLog
         'customer_claim_public' => '领取公海客户',
         'customer_merge' => '合并客户',
         'lead_pool_create' => '进入暂存池',
+        'lead_pool_confirm' => '暂存池确认入库',
+        'lead_pool_attach' => '暂存客户关联到此客户',
+        'lead_pool_reject' => '丢弃暂存客户',
         'contact_create' => '新增联系人',
         'contact_update' => '编辑联系人',
         'contact_delete' => '删除联系人',
@@ -36,7 +39,7 @@ final class CustomerLog
         'tag_save' => '修改标签',
     ];
 
-    private const SENSITIVE = ['customer_delete', 'customer_restore', 'customer_assign', 'customer_public_pool', 'customer_claim_public'];
+    private const SENSITIVE = ['customer_delete', 'customer_restore', 'customer_assign', 'customer_public_pool', 'customer_claim_public', 'customer_merge'];
 
     /**
      * @param array<string, mixed>|null $before
