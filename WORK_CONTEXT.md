@@ -1,5 +1,14 @@
 # Artdon ERP 工作上下文
 
+## 2026-10-15：新系统改为完全独立（不引用旧代码、不共用登录）
+
+- 用户决定：新系统只用数据库里的数据，不调用旧系统任何代码；新旧系统**不共用登录**；新系统写完后旧代码全部删除。上一条记录里“调用 includes/ 函数、会话与旧系统通用”的做法作废。
+- 本次完成：`centers/_base/` 去掉对 `includes/` 的全部引用，新增自己的 `Config`（读 `centers/config.php`，不进 Git）、`Db`（PDO 直连 MySQL，时间由 PHP 生成）、`Session`（会话名 `ARTDON_CENTERS`，与旧系统 `PHPSESSID` 分开）、`Csrf`、`Password`、`Audit`（写 `crm_audit_logs`、`crm_login_logs`，登录日志带“[新系统]”标记）、`Permission`（超级管理员 → 个人拒绝 → 有效临时授权 → 个人允许 → 角色权限；只读，不改授权数据）、`Auth`（登录规则：不存在/密码错误提示相同、5 次失败锁 15 分钟、pending/disabled/rejected/locked 不能登录、成功清零失败次数并记录时间和 IP）。`bootstrap.php` 统一出错页：缺配置时显示 503“新系统还没有完成配置”。导航只列新系统模块，未完成的显示“建设中”不可点击，不再链接旧页面。登录页去掉旧注册页链接。新增 `centers/_base/tools/init_config.php`：服务器上一次性复制数据库连接信息到 `centers/config.php`（先测试连接；权限 640，root 运行时属主改为 www）。`.gitignore` 加入 `centers/config.php`。
+- 修改文件：`centers/**`、`.gitignore`、本文件。
+- 检查结果：`php centers/system/tests/stage1_contract.php` 62 项通过（含：新系统代码不引用旧文件、不调用旧函数、不在运行时改表；登录锁定、状态拦截、日志；权限五层顺序与不修改授权数据；资料与密码规则）。本地 SQLite + 无头浏览器 23 项通过（含：使用自己的会话 `ARTDON_CENTERS`、不带旧会话；缺配置时 503 页面；5 次错误锁定）。`tools/ci_php_checks.sh`：语法 677 个文件 0 失败，契约 76 项全部通过；`tools/ci_js_checks.sh` 26 项通过。
+- 服务器部署情况：合并后需要用户在服务器运行一次 `php centers/_base/tools/init_config.php`，否则新页面显示“还没有完成配置”。
+- 尚未完成 / 下一步：第 2 步账号管理（新建账号不会改动角色权限，这是旧代码的行为，新系统不沿用）；第 3 步权限中心；第 4 步设置中心。
+
 ## 2026-10-15：CRM 拆分重构 · 公共底座与系统中心第 1 步（登录、个人账号）
 
 - 背景：用户决定把 CRM 拆成客户中心、推广中心、邮箱系统、业务跟进四个中心，先做公共底座；工作台、AI 中心、资料生成、联动中心、数据分析归入“其他功能”本轮不动；数据库沿用现有表；**新建期间不修改旧 CRM 任何代码（含 `includes/`）**；界面以“风格 A：建筑光影极简风”为基础收紧（黑色侧栏、暖白底，橙色只用于主按钮和当前选中，状态色另用绿黄红）。方案写在 claude.ai 文档《CRM 拆分重构方案》。根目录 novlight.com 的旧统一登录（`artdon_users`）是否可删未确认，本次不碰。

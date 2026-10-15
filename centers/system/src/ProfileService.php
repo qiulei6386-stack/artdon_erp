@@ -3,19 +3,19 @@ declare(strict_types=1);
 
 namespace Artdon\Centers\System;
 
+use Artdon\Centers\Base\Audit;
+use Artdon\Centers\Base\Db;
+use Artdon\Centers\Base\Password;
 use Artdon\Centers\Base\Validator;
 use Artdon\Centers\Base\ValidationException;
 use PDO;
 
 /**
- * 个人账号：查看和修改自己的资料、修改密码。
+ * 个人账号：查看和修改自己的资料、修改密码。读写 crm_users 表。
  *
- * 读写旧系统同一张 crm_users 表。校验规则与旧页面 profile.php
- * （includes/user_admin_service.php 的 user_self_update_profile / user_self_change_password）一致，差别：
- *   1. 不在运行时检查或修改表结构（旧函数每次调用都会尝试修改 crm_users 表结构）；
- *   2. 部门只能从已有部门中选择，不能随手输入新名字自动建部门；
- *   3. 新密码不能与旧密码相同；
- *   4. 错误按字段返回，页面能在对应输入框下提示。
+ * 规则：账号只能用字母、数字、点、下划线、横线（2-80 位）且不能与他人重复；姓名必填；
+ * 邮箱可空但不能与他人重复；部门只能从启用中的部门选择（原部门已停用可保持不变）；
+ * 新密码至少 8 位含字母和数字、不能与当前密码相同。错误按字段返回。
  */
 final class ProfileService
 {
@@ -24,7 +24,7 @@ final class ProfileService
 
     public function __construct(?PDO $pdo = null)
     {
-        $this->pdo = $pdo ?? db();
+        $this->pdo = $pdo ?? Db::pdo();
     }
 
     /** 账号资料，含角色名、部门名。不存在时返回 null。 */
@@ -102,7 +102,7 @@ final class ProfileService
         $v->check();
 
         $this->pdo->prepare(
-            'UPDATE crm_users SET username = ?, real_name = ?, english_name = ?, email = ?, phone = ?, position = ?, department_id = ?, updated_at = NOW() WHERE id = ?'
+            'UPDATE crm_users SET username = ?, real_name = ?, english_name = ?, email = ?, phone = ?, position = ?, department_id = ?, updated_at = ? WHERE id = ?'
         )->execute([
             $username,
             $realName,
@@ -111,18 +111,17 @@ final class ProfileService
             $phone,
             $position,
             $departmentId !== 0 ? $departmentId : null,
+            Db::now(),
             $userId,
         ]);
 
         $after = $this->profile($userId) ?? [];
-        if (function_exists('audit_log')) {
-            audit_log('user_self_update_profile', 'profile', 'user', $userId, self::auditView($before), self::auditView($after));
-        }
+        Audit::log('user_self_update_profile', 'profile', 'user', $userId, self::auditView($before), self::auditView($after));
         return $after;
     }
 
     /**
-     * 修改自己的密码。成功后调用方应退出登录、让用户用新密码重新登录（与旧系统一致）。
+     * 修改自己的密码。成功后调用方应退出登录，让用户用新密码重新登录。
      *
      * @param array<string, mixed> $input old_password、new_password、confirm_password
      */
@@ -146,10 +145,10 @@ final class ProfileService
         $stmt = $this->pdo->prepare('SELECT password_hash FROM crm_users WHERE id = ? LIMIT 1');
         $stmt->execute([$userId]);
         $hash = (string) $stmt->fetchColumn();
-        if ($hash === '' || !password_verify($old, $hash)) {
+        if (!Password::verify($old, $hash)) {
             $v->fail('old_password', '当前密码不正确');
-        } elseif (!self::isStrong($new)) {
-            $v->fail('new_password', self::strengthMessage());
+        } elseif (!Password::isStrong($new)) {
+            $v->fail('new_password', Password::RULE);
         } elseif ($new === $old) {
             $v->fail('new_password', '新密码不能与当前密码相同');
         } elseif ($new !== $confirm) {
@@ -157,25 +156,9 @@ final class ProfileService
         }
         $v->check();
 
-        $this->pdo->prepare('UPDATE crm_users SET password_hash = ?, force_password_change = 0, updated_at = NOW() WHERE id = ?')
-            ->execute([password_hash($new, PASSWORD_DEFAULT), $userId]);
-        if (function_exists('audit_log')) {
-            audit_log('change_password', 'profile', 'user', $userId);
-        }
-    }
-
-    /** 密码强度规则，沿用旧系统 password_is_strong()：至少 8 位，包含字母和数字。 */
-    public static function isStrong(string $password): bool
-    {
-        if (function_exists('password_is_strong')) {
-            return (bool) password_is_strong($password);
-        }
-        return strlen($password) >= 8 && preg_match('/[A-Za-z]/', $password) && preg_match('/[0-9]/', $password);
-    }
-
-    public static function strengthMessage(): string
-    {
-        return function_exists('password_strength_message') ? (string) password_strength_message() : '密码至少 8 位，并包含字母和数字。';
+        $this->pdo->prepare('UPDATE crm_users SET password_hash = ?, force_password_change = 0, updated_at = ? WHERE id = ?')
+            ->execute([Password::hash($new), Db::now(), $userId]);
+        Audit::log('change_password', 'profile', 'user', $userId);
     }
 
     private function exists(string $column, string $value, int $exceptId): bool

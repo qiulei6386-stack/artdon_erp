@@ -4,10 +4,8 @@ declare(strict_types=1);
 namespace Artdon\Centers\Base;
 
 /**
- * 左侧导航。四个中心 + 其他功能 + 系统中心，按当前用户权限过滤。
- *
- * 还没有重做的模块先指向旧页面（legacy = true，导航上标“旧版”）。
- * 某个中心上线后，只需要把它的 href 改成新地址、去掉 legacy。
+ * 左侧导航。只列新系统里的模块，按当前用户权限过滤。
+ * 还没做好的模块显示为“建设中”，不可点击；做好后把 ready 改为 true 并填上 href。
  */
 final class Nav
 {
@@ -21,32 +19,20 @@ final class Nav
                 'key' => 'centers',
                 'title' => '',
                 'items' => [
-                    ['key' => 'customer', 'label' => '客户中心', 'icon' => 'customers', 'href' => Url::app('crm.php#customers'), 'permission' => 'customer.view', 'legacy' => true],
-                    ['key' => 'promotion', 'label' => '推广中心', 'icon' => 'promotion', 'href' => Url::app('crm.php#promotion'), 'permission' => 'promotion.view', 'legacy' => true],
-                    ['key' => 'mail', 'label' => '邮箱系统', 'icon' => 'mail', 'href' => Url::app('crm.php#mail'), 'permission' => 'mail.view', 'legacy' => true],
-                    ['key' => 'followup', 'label' => '业务跟进', 'icon' => 'followup', 'href' => Url::app('crm.php#visits'), 'permission' => 'visit.view', 'legacy' => true],
-                ],
-            ],
-            [
-                'key' => 'others',
-                'title' => '其他功能',
-                'items' => [
-                    ['key' => 'workspace', 'label' => '工作台', 'href' => Url::app('crm.php#workspace'), 'permission' => 'dashboard.view', 'legacy' => true],
-                    ['key' => 'ai', 'label' => 'AI 中心', 'href' => Url::app('crm.php#ai'), 'permission' => 'radar_view', 'legacy' => true],
-                    ['key' => 'materials', 'label' => '资料生成', 'href' => Url::app('crm.php#materials'), 'permission' => 'customer.view', 'legacy' => true],
-                    ['key' => 'linkage', 'label' => '联动中心', 'href' => Url::app('crm.php#linkage'), 'permission' => 'linkage.view', 'legacy' => true],
-                    ['key' => 'portal', 'label' => '业务门户', 'href' => Url::app('index.php'), 'permission' => '', 'legacy' => true],
+                    ['key' => 'customer', 'label' => '客户中心', 'icon' => 'customers', 'href' => '', 'permission' => 'customer.view', 'ready' => false],
+                    ['key' => 'promotion', 'label' => '推广中心', 'icon' => 'promotion', 'href' => '', 'permission' => 'promotion.view', 'ready' => false],
+                    ['key' => 'mail', 'label' => '邮箱系统', 'icon' => 'mail', 'href' => '', 'permission' => 'mail.view', 'ready' => false],
+                    ['key' => 'followup', 'label' => '业务跟进', 'icon' => 'followup', 'href' => '', 'permission' => 'visit.view', 'ready' => false],
                 ],
             ],
             [
                 'key' => 'system',
                 'title' => '系统',
                 'items' => [
-                    ['key' => 'profile', 'label' => '个人账号', 'icon' => 'user', 'href' => Url::center('system', 'profile.php'), 'permission' => '', 'legacy' => false],
-                    ['key' => 'accounts', 'label' => '账号管理', 'icon' => 'users', 'href' => Url::app('users.php'), 'permission' => 'users.view', 'legacy' => true],
-                    ['key' => 'permissions', 'label' => '权限中心', 'icon' => 'shield', 'href' => Url::app('permissions.php'), 'permission' => 'users.view', 'legacy' => true],
-                    ['key' => 'settings', 'label' => '设置中心', 'icon' => 'settings', 'href' => Url::app('settings.php'), 'permission' => 'settings.view', 'legacy' => true],
-                    ['key' => 'logs', 'label' => '日志', 'icon' => 'log', 'href' => Url::app('logs.php'), 'permission' => 'logs.view_own', 'legacy' => true],
+                    ['key' => 'profile', 'label' => '个人账号', 'icon' => 'user', 'href' => Url::center('system', 'profile.php'), 'permission' => '', 'ready' => true],
+                    ['key' => 'accounts', 'label' => '账号管理', 'icon' => 'users', 'href' => '', 'permission' => 'users.view', 'ready' => false],
+                    ['key' => 'permissions', 'label' => '权限中心', 'icon' => 'shield', 'href' => '', 'permission' => 'users.view', 'ready' => false],
+                    ['key' => 'settings', 'label' => '设置中心', 'icon' => 'settings', 'href' => '', 'permission' => 'settings.view', 'ready' => false],
                 ],
             ],
         ];

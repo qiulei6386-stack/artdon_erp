@@ -45,3 +45,6 @@ id_ed25519*
 
 # Nested junk / test assets copies
 **/test-assets/
+
+# 新系统配置（数据库连接，不进 Git）
+centers/config.php

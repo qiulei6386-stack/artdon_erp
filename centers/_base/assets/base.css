@@ -101,7 +101,9 @@ h1, h2, h3 { margin: 0; line-height: 1.3; }
 .side-link.is-active { background: rgba(194, 65, 12, 0.28); color: #fff; font-weight: 500; }
 .side-link.is-active .side-icon { color: #fb923c; }
 .side-label { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.side-legacy { font-size: 11px; color: var(--c-side-muted); border: 1px solid #44403c; border-radius: 4px; padding: 0 4px; line-height: 16px; }
+.side-tag { font-size: 11px; color: var(--c-side-muted); border: 1px solid #44403c; border-radius: 4px; padding: 0 4px; line-height: 16px; white-space: nowrap; }
+.side-link.is-pending { color: #78716c; cursor: default; }
+.side-link.is-pending:hover { background: transparent; color: #78716c; }
 .side-user { margin-top: auto; padding: 12px 8px 0; border-top: 1px solid var(--c-side-line); display: flex; align-items: center; gap: 10px; }
 .side-user-text { display: flex; flex-direction: column; line-height: 1.3; min-width: 0; }
 .side-user-text strong { color: #fff; font-weight: 500; }
@@ -213,6 +215,10 @@ h1, h2, h3 { margin: 0; line-height: 1.3; }
 .empty-title { font-size: 16px; font-weight: 600; }
 .empty-text { color: var(--c-muted); margin: 0 0 6px; max-width: 520px; }
 .muted { color: var(--c-faint); }
+
+/* ---------- 出错页 ---------- */
+.error-page { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
+.error-page .empty { max-width: 560px; }
 
 /* ---------- 登录页 ---------- */
 .auth { min-height: 100vh; display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); }

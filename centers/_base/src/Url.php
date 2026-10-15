@@ -22,7 +22,7 @@ final class Url
         return $base === '/' ? '' : $base;
     }
 
-    /** 应用内地址：Url::app('crm.php#customers') → /artdon_erp/crm.php#customers */
+    /** 应用内地址：Url::app('centers/system/login.php') → /artdon_erp/centers/system/login.php */
     public static function app(string $path = ''): string
     {
         return self::appBase() . '/' . ltrim($path, '/');
@@ -51,7 +51,7 @@ final class Url
 
     /**
      * 只允许跳回本站的相对地址，防止登录页被利用跳到外站。
-     * 规则与旧系统 auth_safe_redirect() 一致：拒绝带协议、// 开头、反斜杠的地址，以及登录/退出页本身。
+     * 拒绝带协议、// 开头、反斜杠的地址，以及登录/退出页本身。
      */
     public static function safeRedirect(string $url, string $fallback): string
     {

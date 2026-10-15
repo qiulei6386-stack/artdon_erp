@@ -21,5 +21,5 @@ if (!Http::csrfValid()) {
     Http::redirect(Url::center('system', 'profile.php'));
 }
 
-logout_user();
+Auth::logout();
 Http::redirect(Url::center('system', 'login.php') . '?logged_out=1');
