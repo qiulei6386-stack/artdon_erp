@@ -90,12 +90,18 @@ function centers_test_reset(): PDO
     }
     // 正式库中由旧代码 ensure_user_profile_schema() 补上的字段
     $pdo->exec('ALTER TABLE crm_users ADD COLUMN position VARCHAR(120) NULL');
+    // 正式库中已有、由旧代码建的表（新系统只读写数据，不建表）
+    $pdo->exec('CREATE TABLE sys_notifications (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, type VARCHAR(80) NOT NULL DEFAULT \'system\', title VARCHAR(180) NOT NULL, content VARCHAR(800) NULL, payload_json TEXT NULL, read_at DATETIME NULL, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)');
+    $pdo->exec('CREATE TABLE crm_dictionary_items (id INTEGER PRIMARY KEY AUTOINCREMENT, type_key VARCHAR(80) NOT NULL, item_key VARCHAR(120) NOT NULL, name_cn VARCHAR(160) NOT NULL, name_en VARCHAR(160) NULL, short_name VARCHAR(80) NULL, color VARCHAR(40) NULL, icon VARCHAR(40) NULL, description VARCHAR(500) NULL, extra_config_json TEXT NULL, is_default INTEGER NOT NULL DEFAULT 0, is_enabled INTEGER NOT NULL DEFAULT 1, sort_order INTEGER NOT NULL DEFAULT 100, created_by INTEGER NULL, updated_by INTEGER NULL, created_at DATETIME NULL, updated_at DATETIME NULL, deleted_at DATETIME NULL, UNIQUE (type_key, item_key))');
 
     $pdo->exec("INSERT INTO crm_departments (id, name, code, status, sort_order) VALUES (1, '外贸部', 'overseas_sales', 'active', 11), (2, '财务部', 'finance', 'active', 40), (3, '旧总部', 'headquarters', 'disabled', 1)");
     $pdo->exec("INSERT INTO crm_roles (id, role_key, role_name, status) VALUES (1, 'super_admin', '超级管理员', 'active'), (2, 'sales', '业务员', 'active')");
     \Artdon\Centers\Base\Db::set($pdo);
     \Artdon\Centers\Base\Permission::clearCache();
     \Artdon\Centers\Base\SystemSettings::clearCache();
+    \Artdon\Centers\Base\Notify::clearCache();
+    \Artdon\Centers\Base\Dictionary::clearCache();
+    \Artdon\Centers\Base\UserDirectory::clearCache();
     \Artdon\Centers\Base\Auth::refresh();
     $_SESSION = [];
     return $pdo;
