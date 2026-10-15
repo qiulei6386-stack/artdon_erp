@@ -14,6 +14,7 @@ use Artdon\Centers\Base\Layout;
 use Artdon\Centers\Base\Url;
 use Artdon\Centers\Base\UserDirectory;
 use Artdon\Centers\Mail\MailAccounts;
+use Artdon\Centers\Mail\MailView;
 
 $user = Auth::requirePage();
 $service = new MailAccounts($user);
@@ -25,6 +26,7 @@ if (!$service->canManage($ownerId)) {
 }
 $isSelf = $ownerId === $selfId;
 $accounts = $service->forUser($ownerId);
+$stats = $service->stats($ownerId);
 $api = Url::center('mail', 'api.php');
 $self = Url::center('mail', 'accounts.php');
 $ownerName = '';
@@ -41,26 +43,14 @@ $exmail = $presets['exmail'];
 $newFill = json_encode(['id' => '', 'title_text' => '绑定邮箱', 'secret_hint' => '', 'imap_host' => $exmail['imap_host'], 'imap_port' => (string) $exmail['imap_port'], 'imap_secure' => 'ssl',
     'smtp_host' => $exmail['smtp_host'], 'smtp_port' => (string) $exmail['smtp_port'], 'smtp_secure' => 'ssl', 'preset' => 'exmail', 'sender_name' => $isSelf ? Auth::displayName($user) : $ownerName], JSON_UNESCAPED_UNICODE);
 $secure = MailAccounts::SECURE;
-$statusText = static function (array $a): array {
-    $s = (string) ($a['sync_status'] ?? '');
-    if ((int) $a['is_enabled'] !== 1) {
-        return ['已停用', 'badge-muted'];
-    }
-    if ($s === 'failed' || $s === 'error' || trim((string) ($a['sync_error'] ?? '')) !== '') {
-        return ['收信出错', 'badge-bad'];
-    }
-    if ($a['last_sync_time']) {
-        return ['正常', 'badge-good'];
-    }
-    return ['等待第一次收信', 'badge-warn'];
-};
 
 Layout::start([
     'title' => '邮箱设置',
     'nav' => 'mail',
-    'crumbs' => ['邮箱' => Url::center('mail', 'index.php'), '邮箱设置' => null],
+    'crumbs' => ['邮箱系统' => Url::center('mail', 'index.php'), '邮箱设置' => null],
     'styles' => [Url::centerAsset('mail', 'mail.css')],
     'scripts' => [Url::centerAsset('mail', 'mail.js')],
+    'subnav' => MailView::subnav('accounts', 0, 0, true),
 ]);
 ?>
 <div class="page-head">
@@ -83,20 +73,74 @@ Layout::start([
       <noscript><button type="submit" class="btn btn-sm">切换</button></noscript>
     </form>
     <?php endif; ?>
-    <button type="button" class="btn btn-primary" data-open-dialog="d-account" data-fill="<?= Layout::e((string) $newFill) ?>">绑定邮箱</button>
+    <button type="button" class="btn btn-primary" data-open-dialog="d-account" data-fill="<?= Layout::e((string) $newFill) ?>">＋ 绑定邮箱</button>
   </div>
 </div>
 
 <?php if (!$accounts): ?>
-<section class="card"><div class="empty">
+<section class="empty">
   <div class="empty-title"><?= $isSelf ? '你还没有绑定邮箱' : '还没有绑定邮箱' ?></div>
   <p class="empty-text">需要：邮箱地址、授权码（在邮箱网页版“设置 → 账户 → 客户端专用密码 / 授权码”里生成）。腾讯企业邮的服务器已经预先填好。</p>
-</div></section>
-<?php else: ?>
-<div class="stack">
-<?php foreach ($accounts as $a):
-    $aid = (int) $a['id'];
-    [$sText, $sClass] = $statusText($a);
+  <button type="button" class="btn btn-primary" data-open-dialog="d-account" data-fill="<?= Layout::e((string) $newFill) ?>">绑定邮箱</button>
+</section>
+<?php else:
+    $selectedId = (int) ($_GET['id'] ?? 0);
+    $selected = null;
+    foreach ($accounts as $a) {
+        if ((int) $a['id'] === $selectedId) {
+            $selected = $a;
+        }
+    }
+    $selected = $selected ?? $accounts[0];
+    $selectedId = (int) $selected['id'];
+    $cardUrl = static function (int $id) use ($self, $ownerId, $selfId): string {
+        return $self . '?' . http_build_query(array_filter(['user_id' => $ownerId === $selfId ? 0 : $ownerId, 'id' => $id]));
+    };
+?>
+<div class="kpi-row">
+  <div class="kpi-card"><div><div class="kpi-label">已绑定邮箱</div><div class="kpi-num"><?= count($accounts) ?><small>个</small></div><div class="kpi-trend is-muted">启用 <?= count(array_filter($accounts, static function ($a) { return (int) $a['is_enabled'] === 1; })) ?> 个</div></div></div>
+  <div class="kpi-card"><div><div class="kpi-label">30 天收信</div><div class="kpi-num is-brand"><?= array_sum(array_column($stats, 'received')) ?><small>封</small></div><div class="kpi-trend is-muted">未读 <?= array_sum(array_column($stats, 'unread')) ?> 封</div></div></div>
+  <div class="kpi-card"><div><div class="kpi-label">30 天发信</div><div class="kpi-num"><?= array_sum(array_column($stats, 'sent')) ?><small>封</small></div><div class="kpi-trend is-muted">含从邮箱服务器同步回来的</div></div></div>
+  <?php $bad = count(array_filter($accounts, static function ($a) { return MailAccounts::state($a)[1] === 'bad'; })); ?>
+  <div class="kpi-card"><div><div class="kpi-label">收信出错</div><div class="kpi-num<?= $bad ? ' is-bad' : '' ?>"><?= $bad ?><small>个</small></div><div class="kpi-trend<?= $bad ? ' is-bad' : ' is-muted' ?>"><?= $bad ? '请检查授权码或服务器设置' : '全部正常' ?></div></div></div>
+</div>
+
+<div class="gallery">
+  <div class="g-grid">
+  <?php foreach ($accounts as $a):
+      $aid = (int) $a['id'];
+      [$sText, $sKind] = MailAccounts::state($a);
+      $st = $stats[$aid] ?? ['received' => 0, 'sent' => 0, 'unread' => 0, 'total' => 0]; ?>
+    <a class="g-card mail-account<?= $aid === $selectedId ? ' is-selected' : '' ?>" href="<?= Layout::e($cardUrl($aid)) ?>"<?= $aid === $selectedId ? ' aria-current="true"' : '' ?>>
+      <div class="g-card-head">
+        <div style="min-width:0">
+          <div class="pill-wrap" style="margin-bottom:6px">
+            <span class="pill <?= ['good' => 'pill-good', 'warn' => 'pill-warn', 'bad' => 'pill-accent'][$sKind] ?? '' ?>"><?= Layout::e($sText) ?></span>
+            <?php if ((int) $a['is_default'] === 1): ?><span class="pill pill-brand">默认发信</span><?php endif; ?>
+          </div>
+          <h2 class="g-card-title mail-account-title"><?= Layout::e((string) $a['email_address']) ?></h2>
+          <small class="muted"><?= (string) $a['sender_name'] !== '' ? Layout::e((string) $a['sender_name']) : '未设置发件人名称' ?></small>
+        </div>
+        <div class="g-card-stat"><strong><?= (int) $st['received'] ?></strong><small>30 天收信</small></div>
+      </div>
+      <div class="thumbs">
+        <div class="thumb"><strong><?= (int) $st['sent'] ?></strong><span>30 天发信</span></div>
+        <div class="thumb"><strong><?= (int) $st['unread'] ?></strong><span>未读</span></div>
+        <div class="thumb"><strong><?= (int) $st['total'] ?></strong><span>邮件总数</span></div>
+      </div>
+      <div class="g-card-foot">
+        <small class="muted"><?= $a['last_sync_time'] ? '最近同步 ' . Layout::e(MailView::ago((string) $a['last_sync_time'])) : '还没有同步过' ?></small>
+        <span class="card-link-text"><?= $aid === $selectedId ? '详情在右侧 →' : '查看详情' ?></span>
+      </div>
+    </a>
+  <?php endforeach; ?>
+    <button type="button" class="g-card g-card-add" data-open-dialog="d-account" data-fill="<?= Layout::e((string) $newFill) ?>"><span style="font-size:24px">＋</span><span>绑定新邮箱</span></button>
+  </div>
+
+  <?php
+    $a = $selected;
+    $aid = $selectedId;
+    [$sText, $sKind] = MailAccounts::state($a);
     $fill = json_encode([
         'id' => $aid, 'title_text' => '修改邮箱', 'secret_hint' => '留空表示不修改授权码', 'preset' => '',
         'email_address' => $a['email_address'], 'email_username' => $a['email_username'] === $a['email_address'] ? '' : $a['email_username'],
@@ -104,36 +148,50 @@ Layout::start([
         'smtp_host' => $a['smtp_host'], 'smtp_port' => (string) $a['smtp_port'], 'smtp_secure' => $a['smtp_secure'] ?: 'ssl',
         'sender_name' => (string) $a['sender_name'], 'signature_html' => (string) $a['signature_html'],
     ], JSON_UNESCAPED_UNICODE); ?>
-  <section class="card mail-account" aria-labelledby="acc-<?= $aid ?>">
-    <div class="card-body mail-account-body">
-      <div class="mail-account-main">
-        <h2 class="mail-account-title" id="acc-<?= $aid ?>"><?= Layout::e((string) $a['email_address']) ?>
-          <?php if ((int) $a['is_default'] === 1): ?><span class="badge badge-brand">默认</span><?php endif; ?>
-          <span class="badge <?= $sClass ?>"><?= Layout::e($sText) ?></span>
-        </h2>
-        <dl class="mail-meta">
-          <dt>发件人名称</dt><dd><?= (string) $a['sender_name'] !== '' ? Layout::e((string) $a['sender_name']) : '<span class="muted">未设置（对方看到的是邮箱地址）</span>' ?></dd>
-          <dt>收信</dt><dd><?= Layout::e($a['imap_host'] . ':' . $a['imap_port'] . ' · ' . ($secure[$a['imap_secure']] ?? $a['imap_secure'])) ?></dd>
-          <dt>发信</dt><dd><?= Layout::e($a['smtp_host'] . ':' . $a['smtp_port'] . ' · ' . ($secure[$a['smtp_secure']] ?? $a['smtp_secure'])) ?></dd>
-          <dt>最近收信</dt><dd><?= $a['last_sync_time'] ? Layout::e((string) $a['last_sync_time']) : '<span class="muted">还没有</span>' ?><?php if (trim((string) $a['sync_error']) !== ''): ?><br><span class="text-bad"><?= Layout::e(mb_substr((string) $a['sync_error'], 0, 200, 'UTF-8')) ?></span><?php endif; ?></dd>
-          <dt>签名</dt><dd><?= trim(strip_tags((string) $a['signature_html'])) !== '' ? '已设置' : '<span class="muted">未设置</span>' ?></dd>
-          <?php if ((int) $a['has_secret'] !== 1): ?><dt>授权码</dt><dd class="text-bad">没有保存授权码，请点“修改”重新填写</dd><?php endif; ?>
-        </dl>
-        <p class="mail-test-result" data-test-result="<?= $aid ?>" role="status" hidden></p>
-      </div>
-      <div class="mail-account-actions">
-        <button type="button" class="btn btn-sm" data-open-dialog="d-account" data-fill="<?= Layout::e((string) $fill) ?>">修改</button>
-        <form data-api data-test-form="<?= $aid ?>" action="<?= Layout::e($api) ?>?action=account_test"><input type="hidden" name="user_id" value="<?= $ownerId ?>"><input type="hidden" name="id" value="<?= $aid ?>"><input type="hidden" name="type" value="imap"><button type="submit" class="btn btn-sm">测试收信</button></form>
-        <form data-api data-test-form="<?= $aid ?>" action="<?= Layout::e($api) ?>?action=account_test"><input type="hidden" name="user_id" value="<?= $ownerId ?>"><input type="hidden" name="id" value="<?= $aid ?>"><input type="hidden" name="type" value="smtp"><button type="submit" class="btn btn-sm">测试发信</button></form>
+  <aside class="drawer" aria-labelledby="acc-title">
+    <div>
+      <div class="drawer-kicker">当前选中的邮箱</div>
+      <h2 class="drawer-title" id="acc-title"><?= Layout::e((string) $a['email_address']) ?></h2>
+    </div>
+    <div class="row-actions" style="justify-content:flex-start;flex-wrap:wrap">
+      <button type="button" class="btn btn-sm btn-primary" data-open-dialog="d-account" data-fill="<?= Layout::e((string) $fill) ?>">修改设置</button>
+      <form data-api data-test-form="<?= $aid ?>" action="<?= Layout::e($api) ?>?action=account_test"><input type="hidden" name="user_id" value="<?= $ownerId ?>"><input type="hidden" name="id" value="<?= $aid ?>"><input type="hidden" name="type" value="imap"><button type="submit" class="btn btn-sm">测试收信</button></form>
+      <form data-api data-test-form="<?= $aid ?>" action="<?= Layout::e($api) ?>?action=account_test"><input type="hidden" name="user_id" value="<?= $ownerId ?>"><input type="hidden" name="id" value="<?= $aid ?>"><input type="hidden" name="type" value="smtp"><button type="submit" class="btn btn-sm">测试发信</button></form>
+    </div>
+    <p class="mail-test-result" data-test-result="<?= $aid ?>" role="status" hidden></p>
+    <?php if (trim((string) $a['sync_error']) !== ''): ?><p class="alert alert-error" style="margin:0">最近收信出错：<?= Layout::e(mb_substr((string) $a['sync_error'], 0, 300, 'UTF-8')) ?></p><?php endif; ?>
+    <?php if ((int) $a['has_secret'] !== 1): ?><p class="alert alert-error" style="margin:0">没有保存授权码，请点“修改设置”重新填写。</p><?php endif; ?>
+    <div class="drawer-section">
+      <div class="drawer-section-title">设置</div>
+      <dl class="mail-meta">
+        <dt>状态</dt><dd><span class="pill <?= ['good' => 'pill-good', 'warn' => 'pill-warn', 'bad' => 'pill-accent'][$sKind] ?? '' ?>"><?= Layout::e($sText) ?></span></dd>
+        <dt>发件人</dt><dd><?= (string) $a['sender_name'] !== '' ? Layout::e((string) $a['sender_name']) : '<span class="muted">未设置（对方看到的是邮箱地址）</span>' ?></dd>
+        <dt>登录账号</dt><dd><?= Layout::e((string) $a['email_username']) ?></dd>
+        <dt>收信</dt><dd><?= Layout::e($a['imap_host'] . ':' . $a['imap_port'] . ' · ' . ($secure[$a['imap_secure']] ?? $a['imap_secure'])) ?></dd>
+        <dt>发信</dt><dd><?= Layout::e($a['smtp_host'] . ':' . $a['smtp_port'] . ' · ' . ($secure[$a['smtp_secure']] ?? $a['smtp_secure'])) ?></dd>
+        <dt>最近同步</dt><dd><?= $a['last_sync_time'] ? Layout::e((string) $a['last_sync_time']) : '<span class="muted">还没有</span>' ?></dd>
+        <dt>绑定时间</dt><dd><?= Layout::e((string) $a['created_at']) ?></dd>
+      </dl>
+    </div>
+    <div class="drawer-section">
+      <div class="drawer-section-title">签名预览</div>
+      <?php if (trim(strip_tags((string) $a['signature_html'], '<img>')) === ''): ?>
+        <p class="muted" style="margin:0">还没有签名。点“修改设置”添加，写信时会自动加在正文下面。</p>
+      <?php else: ?>
+        <iframe class="mail-signature-preview" title="签名预览" sandbox="" srcdoc="<?= Layout::e('<!doctype html><meta charset="utf-8"><style>body{margin:8px;font:13px/1.5 sans-serif;color:#18181b}img{max-width:100%}</style>' . \Artdon\Centers\Mail\MailBody::clean((string) $a['signature_html'])) ?>"></iframe>
+      <?php endif; ?>
+    </div>
+    <div class="drawer-section">
+      <div class="drawer-section-title">其他操作</div>
+      <div class="row-actions" style="justify-content:flex-start;flex-wrap:wrap">
         <?php if ((int) $a['is_default'] !== 1 && (int) $a['is_enabled'] === 1): ?>
-          <form data-api action="<?= Layout::e($api) ?>?action=account_default"><input type="hidden" name="user_id" value="<?= $ownerId ?>"><input type="hidden" name="id" value="<?= $aid ?>"><button type="submit" class="btn btn-sm btn-ghost">设为默认</button></form>
+          <form data-api action="<?= Layout::e($api) ?>?action=account_default"><input type="hidden" name="user_id" value="<?= $ownerId ?>"><input type="hidden" name="id" value="<?= $aid ?>"><button type="submit" class="btn btn-sm">设为默认发信</button></form>
         <?php endif; ?>
-        <form data-api action="<?= Layout::e($api) ?>?action=account_enable"><input type="hidden" name="user_id" value="<?= $ownerId ?>"><input type="hidden" name="id" value="<?= $aid ?>"><input type="hidden" name="enabled" value="<?= (int) $a['is_enabled'] === 1 ? 0 : 1 ?>"><button type="submit" class="btn btn-sm btn-ghost"><?= (int) $a['is_enabled'] === 1 ? '停用' : '启用' ?></button></form>
-        <button type="button" class="btn btn-sm btn-ghost" data-open-dialog="d-account-delete" data-fill="<?= Layout::e((string) json_encode(['id' => $aid, 'email_text' => $a['email_address']], JSON_UNESCAPED_UNICODE)) ?>">删除</button>
+        <form data-api action="<?= Layout::e($api) ?>?action=account_enable"><input type="hidden" name="user_id" value="<?= $ownerId ?>"><input type="hidden" name="id" value="<?= $aid ?>"><input type="hidden" name="enabled" value="<?= (int) $a['is_enabled'] === 1 ? 0 : 1 ?>"><button type="submit" class="btn btn-sm"><?= (int) $a['is_enabled'] === 1 ? '停用' : '启用' ?></button></form>
+        <button type="button" class="btn btn-sm btn-danger" data-open-dialog="d-account-delete" data-fill="<?= Layout::e((string) json_encode(['id' => $aid, 'email_text' => $a['email_address']], JSON_UNESCAPED_UNICODE)) ?>">删除</button>
       </div>
     </div>
-  </section>
-<?php endforeach; ?>
+  </aside>
 </div>
 <?php endif; ?>
 
