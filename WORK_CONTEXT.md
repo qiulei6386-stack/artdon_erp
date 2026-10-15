@@ -1,5 +1,14 @@
 # Artdon ERP 工作上下文
 
+## 2026-10-15：权限中心第 2 批 · 人员权限（新系统）
+
+- 上一步部署情况：PR #13（权限中心第 1 批）合并后自动部署成功，服务器 `cf5f791`。
+- 本次完成：`centers/system/people.php`。左侧人员列表（搜索、个人设置数、超管和状态标记），右侧：①有效的临时授权；②数据范围（客户、联系人、跟进、拜访、商机、邮箱、推广、任务、报价、订单、日志，以及此人已有设置的其他模块；类型：只看本人 / 本人和分配给我 / 本团队 / 本部门 / 指定国家 / 指定客户分组 / 全部 / 都不能看；指定国家或分组时必填取值）；③权限明细：每项显示是否生效和来源（超级管理员 / 个人拒绝 / 临时授权 / 个人允许 / 角色），每项可选“跟随角色 / 允许 / 拒绝”，改动时实时显示结果；搜索、只看已生效、只看个人设置、未保存提示。权限中心“人员权限”标签可用。接口加入 people_permissions_save、people_scopes_save。
+- 规则：查看 `users.view`；修改个人权限和数据范围 `users.assign_permission`。不能改自己的；超级管理员不需要单独设置；非超管不能给别人“允许”自己没有的权限（“拒绝”不受限）。“跟随角色”删除个人记录；数据范围设回“只看本人”删除记录（无记录即只看本人）。写 `crm_audit_logs`，记录前后值。
+- 修改文件：`centers/_base/assets/base.css`、`centers/system/{people.php,roles.php,api.php}`、`centers/system/src/{PeopleService,PermissionTabs}.php`、`centers/system/assets/people.js`、`centers/system/tests/people_contract.php`、`centers/README.md`、`tools/ci_php_checks.sh`、本文件。
+- 检查结果：`people_contract.php` 30 项及前三个契约测试（62、48、36 项）全部通过；本地 SQLite + 无头浏览器四组共 81 项全部通过（人员权限 14 项：来源显示、实时结果、保存、只看个人设置、数据范围取值必填与保存、自己/超管只读、无分配权限只读）；1366 和手机宽截图核对，修正手机上左侧列表宽度和待审核状态显示。`tools/ci_php_checks.sh`：语法 693 个文件 0 失败，契约 79 项全部通过；`tools/ci_js_checks.sh` 26 项通过。
+- 尚未完成 / 下一步：权限中心第 3 批申请与授权；设置中心。
+
 ## 2026-10-15：权限中心第 1 批 · 部门、角色、角色权限矩阵（新系统）
 
 - 上一步部署情况：PR #12（账号管理）合并后自动部署成功，服务器 `71a4da2`。

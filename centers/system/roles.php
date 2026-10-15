@@ -58,7 +58,7 @@ Layout::start([
 <?= PermissionTabs::render('roles') ?>
 
 <div class="cols">
-  <aside class="col-side" style="flex: 1 1 260px; max-width: 320px" aria-label="角色列表">
+  <aside class="col-side col-picker" aria-label="角色列表">
     <section class="card">
       <div class="card-head"><h2 class="card-title">角色</h2><span class="muted"><?= count($roles) ?> 个</span></div>
       <nav class="role-list">

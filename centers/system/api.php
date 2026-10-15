@@ -9,6 +9,7 @@ use Artdon\Centers\Base\Api;
 use Artdon\Centers\Base\Flash;
 use Artdon\Centers\System\AccountService;
 use Artdon\Centers\System\DepartmentService;
+use Artdon\Centers\System\PeopleService;
 use Artdon\Centers\System\RoleService;
 
 $accounts = static function (array $user): AccountService {
@@ -110,5 +111,29 @@ Api::run([
         (new DepartmentService($user))->enable($id($input));
         Flash::set('success', '部门已启用。');
         return ['message' => '已启用'];
+    }],
+
+    // ---------- 人员权限 ----------
+    'people_permissions_save' => ['method' => 'POST', 'handler' => static function (array $input, array $user): array {
+        $choices = [];
+        foreach ($input as $key => $value) {
+            if (is_string($key) && preg_match('/^perm\[(.+)\]$/', $key, $m)) {
+                $choices[$m[1]] = (string) $value;
+            }
+        }
+        $r = (new PeopleService($user))->saveOverrides((int) ($input['user_id'] ?? 0), $choices);
+        Flash::set('success', $r['changed'] ? '个人设置已保存：改动 ' . $r['changed'] . ' 项，马上生效。' : '没有改动。');
+        return ['changed' => $r['changed'], 'message' => '已保存'];
+    }],
+    'people_scopes_save' => ['method' => 'POST', 'handler' => static function (array $input, array $user): array {
+        $scopes = [];
+        foreach ($input as $key => $value) {
+            if (is_string($key) && preg_match('/^scope\[([a-z0-9_]+)\]\[(type|value)\]$/', $key, $m)) {
+                $scopes[$m[1]][$m[2]] = (string) $value;
+            }
+        }
+        $r = (new PeopleService($user))->saveScopes((int) ($input['user_id'] ?? 0), $scopes);
+        Flash::set('success', $r['changed'] ? '数据范围已保存：改动 ' . $r['changed'] . ' 个模块。' : '没有改动。');
+        return ['changed' => $r['changed'], 'message' => '已保存'];
     }],
 ]);

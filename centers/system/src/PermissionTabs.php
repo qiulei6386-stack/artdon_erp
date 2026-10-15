@@ -14,7 +14,7 @@ final class PermissionTabs
         $tabs = [
             'roles' => ['角色与权限', Url::center('system', 'roles.php')],
             'departments' => ['部门', Url::center('system', 'departments.php')],
-            'people' => ['人员权限', ''],
+            'people' => ['人员权限', Url::center('system', 'people.php')],
             'requests' => ['申请与授权', ''],
         ];
         $html = '<nav class="tabs" aria-label="权限中心">';
