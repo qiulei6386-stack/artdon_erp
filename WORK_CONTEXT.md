@@ -1,5 +1,20 @@
 # Artdon ERP 工作上下文
 
+## 2026-10-15：邮箱系统 · 旧邮箱规则清单（待用户确认，无代码修改）
+
+- 上一步：PR #23 客户中心第二批（三），服务器 `3d29df0`（已确认部署成功）。客户中心除邮件/报价/订单汇总外已完成。
+- 本次完成：读旧代码 `crm_mail.php`（5665 行）、`crm_mail_cron.php`、`crm_mail_sent_visibility.php`，整理邮箱规则清单交用户确认。要点：
+  - 表：crm_user_mail_accounts、crm_mails、crm_mail_attachments、crm_mail_drafts、crm_mail_sync_logs、crm_mail_send_jobs、crm_mail_signature_templates。
+  - 邮箱密码用 AES-256-CBC 加密，密钥由旧配置 includes/config.php 的 app_key（没有则 db_name）算出；新系统要用同一个种子才能解密。
+  - 收信和定时发送由服务器定时任务 `php crm_mail_cron.php` 做（默认每 3 分钟、每次 30 封，首次补收 300 封；失败按 2/5/10/20 或 5/10/30/60 分钟退避）。收件箱和发件箱都从 IMAP 收；用自写的 socket IMAP/SMTP。
+  - 只能看自己的邮箱；有 mail.account_manage_all 的管理员可以“代操作”别人的邮箱（包括读信）。
+  - 自动关联客户：发件人/收件人邮箱等于客户邮箱或联系人邮箱。未回复：发出 3 天没有对方回信、没有跟进记录、没标记已处理。撤回：实际是给收件人发一封“撤回通知”。
+  - 附件存在 storage/mail_attachments/{用户}/{邮件}/，原始邮件存 storage/mail_raw/；旧代码有按路径直接访问附件的写法。
+  - 另有：签名模板与批量应用、产品资料（datasheet）PDF 附件（用 Chrome 生成）、Office 附件预览（LibreOffice）、远程图片代理、从邮件建客户/暂存/跟进/任务/派工、新邮件通知、诊断。
+- 待用户确认的决定：过渡期收信谁来做、密钥种子迁移、管理员能否读别人的信、客户详情邮件标签的可见范围、撤回通知是否保留、产品资料/Office 预览是否还在用、分批范围。
+- 修改文件：本文件。
+- 下一步：用户确认后开始邮箱系统第一批。
+
 ## 2026-10-15：客户中心第二批（三）· 导入、导出、名片识别（新系统）
 
 - 上一步：PR #22 第二批（二），服务器 `d4d51fb`（已确认部署成功）。
