@@ -56,6 +56,7 @@ cd /www/wwwroot/Artdon/artdon_erp && php centers/_base/tools/init_config.php
 - 客户中心：`/artdon_erp/centers/customer/index.php`（我的客户 / 全部客户 / 公海 / 已删除；详情 `view.php?id=`）
 - 客户暂存池：`/artdon_erp/centers/customer/leads.php`（查看 `customer.lead_pool_view`，处理 `customer.lead_pool`）
 - 客户分组：`/artdon_erp/centers/customer/groups.php`（管理需要 `customer.batch`）
+- 导入客户：`/artdon_erp/centers/customer/import.php`（`customer.import`）；导出：客户列表“导出”按钮（`customer.export`）
 
 ## 底座公共件（给各业务中心用）
 

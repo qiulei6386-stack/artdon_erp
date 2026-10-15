@@ -41,3 +41,10 @@
 .picker-empty { padding: 6px 8px; }
 .notice > .btn { align-self: center; }
 .group-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+.text-good { color: var(--c-good); }
+.card-scan { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 10px 12px; border: 1px dashed var(--c-brand-line); border-radius: var(--radius); background: var(--c-brand-soft); }
+.card-scan .muted { flex: 1 1 200px; }
+.card-thumbs { display: flex; flex-wrap: wrap; gap: 10px; }
+.card-thumb { display: flex; flex-direction: column; gap: 4px; width: 150px; }
+.card-thumb img { width: 150px; height: 92px; object-fit: cover; border: 1px solid var(--c-line); border-radius: var(--radius); background: var(--c-surface-2); }
+.card-thumb small { color: var(--c-muted); }

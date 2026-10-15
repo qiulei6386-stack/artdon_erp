@@ -11,6 +11,7 @@ use Artdon\Centers\Base\Form;
 use Artdon\Centers\Base\Layout;
 use Artdon\Centers\Base\NotFoundException;
 use Artdon\Centers\Base\Url;
+use Artdon\Centers\Customer\BusinessCard;
 use Artdon\Centers\Customer\ContactService;
 use Artdon\Centers\Customer\Country;
 use Artdon\Centers\Customer\CustomerDetails;
@@ -178,6 +179,29 @@ Layout::start([
         <?php endif; ?>
       </div>
     </section>
+    <?php $cards = (new BusinessCard($user))->forCustomer($id); if ($cards): ?>
+    <section class="card">
+      <div class="card-head"><h2 class="card-title">名片</h2></div>
+      <div class="card-body card-thumbs">
+        <?php foreach ($cards as $card): $src = Url::center('customer', 'card.php?id=' . (int) $card['id']); ?>
+          <div class="card-thumb">
+            <a href="<?= Layout::e($src) ?>" target="_blank" rel="noopener"><img src="<?= Layout::e($src) ?>" alt="名片 <?= Layout::e(substr((string) $card['created_at'], 0, 10)) ?>" loading="lazy"></a>
+            <small><?= Layout::e(substr((string) $card['created_at'], 0, 10)) ?><?= $card['uploader'] ? ' · ' . Layout::e((string) $card['uploader']) : '' ?></small>
+            <?php if ($service->can('customer.file_delete') && !$deleted): ?><button type="button" class="btn btn-sm btn-ghost" data-open-dialog="d-card-delete" data-fill='{"id":"<?= (int) $card['id'] ?>"}'>删除</button><?php endif; ?>
+          </div>
+        <?php endforeach; ?>
+      </div>
+    </section>
+    <?php endif; ?>
+    <?php if ($cards && $service->can('customer.file_delete') && !$deleted): ?>
+    <dialog class="dialog dialog-sm" id="d-card-delete" aria-labelledby="d-card-delete-title">
+      <form data-api action="<?= Layout::e($api) ?>?action=card_delete">
+        <div class="dialog-head"><h2 class="dialog-title" id="d-card-delete-title">删除名片图片</h2><button type="button" class="icon-btn" data-close-dialog aria-label="关闭">×</button></div>
+        <div class="dialog-body stack"><p class="alert alert-error form-error" data-form-error hidden></p><input type="hidden" name="id" value=""><p style="margin:0">删除后图片文件也会删掉，不能恢复。</p></div>
+        <div class="dialog-foot"><button type="button" class="btn" data-close-dialog>取消</button><button type="submit" class="btn btn-danger">删除</button></div>
+      </form>
+    </dialog>
+    <?php endif; ?>
     <?php if ($missing): ?>
     <section class="card">
       <div class="card-head"><h2 class="card-title">资料还缺</h2></div>

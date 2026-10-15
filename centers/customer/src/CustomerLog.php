@@ -44,6 +44,12 @@ final class CustomerLog
         'chat_group_delete' => '删除聊天群',
         'customer_relation' => '新增客户关系',
         'customer_relation_delete' => '删除客户关系',
+        'customer_export' => '导出客户',
+        'customer_import_preview' => '预览客户导入',
+        'customer_import_commit' => '导入客户',
+        'business_card_ocr' => '名片识别',
+        'business_card_save' => '保存名片图片',
+        'business_card_delete' => '删除名片图片',
         'group_create' => '新建分组',
         'group_update' => '编辑分组',
         'group_delete' => '删除分组',
@@ -51,7 +57,7 @@ final class CustomerLog
         'tag_save' => '修改标签',
     ];
 
-    private const SENSITIVE = ['customer_delete', 'customer_restore', 'customer_assign', 'customer_public_pool', 'customer_claim_public', 'customer_merge'];
+    private const SENSITIVE = ['customer_delete', 'customer_restore', 'customer_assign', 'customer_public_pool', 'customer_claim_public', 'customer_merge', 'customer_export', 'customer_import_commit'];
 
     /**
      * @param array<string, mixed>|null $before
