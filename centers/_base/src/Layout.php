@@ -98,6 +98,8 @@ final class Layout
         echo '</nav>';
         echo '<div class="top-fill"></div>';
         if ($user) {
+            $unread = Notify::unreadCount((int) $user['id']);
+            echo '<a class="icon-btn top-bell" href="' . self::e(Url::center('system', 'notifications.php')) . '" aria-label="' . ($unread > 0 ? '通知，' . $unread . ' 条未读' : '通知') . '" title="通知">' . Icon::svg('bell', 18) . ($unread > 0 ? '<span class="bell-count" aria-hidden="true">' . ($unread > 99 ? '99+' : $unread) . '</span>' : '') . '</a>';
             echo '<details class="usermenu"><summary class="usermenu-btn"><span class="avatar avatar-sm" aria-hidden="true">' . self::e(mb_substr(Auth::displayName($user), 0, 1, 'UTF-8')) . '</span><span class="usermenu-name">' . self::e(Auth::displayName($user)) . '</span></summary>';
             echo '<div class="usermenu-panel">';
             echo '<div class="usermenu-head"><strong>' . self::e(Auth::displayName($user)) . '</strong><small>' . self::e((string) ($user['username'] ?? '')) . '</small></div>';

@@ -52,3 +52,12 @@ cd /www/wwwroot/Artdon/artdon_erp && php centers/_base/tools/init_config.php
 - 权限申请与临时授权：`/artdon_erp/centers/system/requests.php`（所有人可申请；审批与授权管理按权限显示）
 - 设置中心：`/artdon_erp/centers/system/settings.php`（公司信息与 Logo、安全设置、系统信息；查看 `settings.view`，修改 `settings.edit`）
 - 日志：`/artdon_erp/centers/system/logs.php`（登录日志、操作日志；`logs.view_all` 看全部，`logs.view_own` 只看自己）
+- 通知：`/artdon_erp/centers/system/notifications.php`（顶栏铃铛进入；只显示新系统发出的通知）
+
+## 底座公共件（给各业务中心用）
+
+- `Notify`：站内通知，写正式库 `sys_notifications`，类型以 `centers.` 开头；发送失败不影响业务。
+- `Dictionary`：只读业务字典（`crm_dictionary_items`），如客户等级、来源、生命周期、推广方式。
+- `DataScope`：数据范围。权限（`{模块}.view_all` / `{模块}.view_department`）与权限中心设置的数据范围取较大者。
+- `UserDirectory`：正常账号列表，按部门分组，用于选择负责人。
+- `Pager`：分页条。

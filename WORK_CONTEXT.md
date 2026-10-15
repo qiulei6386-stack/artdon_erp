@@ -1,5 +1,26 @@
 # Artdon ERP 工作上下文
 
+## 2026-10-15：底座收尾 · 站内通知与业务公共件（新系统）
+
+- 上一步：PR #17 记录客户规则清单，服务器 `7739bde`。用户回复“按你建议的”，客户中心 9 项决定全部确认：
+  1. 可见范围：`customer.view_all` / `customer.view_department` 继续有效，权限中心设置的客户数据范围同时生效，取较大者；
+  2. 公海单独页面，有领取权限的人都能看到并领取；转入公海时清掉全部负责人；
+  3. 查重查全部客户（不再只看最近 500 个）；准入规则沿用正式库 `crm_rule_configs` 现有配置；
+  4. 改负责人只能通过“分配”，需要 `customer.assign`，编辑页不能改负责人；
+  5. 新系统不做强制删除，只做删除与恢复；
+  6. 不做自动掉公海，继续手动转入；
+  7. 暂存池“关联已有客户”时可选择把联系人补到已有客户；
+  8. 字典先只读沿用旧数据，维护功能以后加到新系统设置中心；
+  9. 分三批：第一批列表（我的/全部/公海+筛选）、详情（概览、联系人、日志）、新建（查重+暂存池）、编辑、分配、公海转入与领取、删除与恢复；第二批暂存池处理、合并、分组管理、导入导出；第三批邮件、报价、订单等汇总。
+  仍待用户答复：名片识别、多地址、聊天群、关系图谱是否还在用（用的话排进第二批）；正式库准入规则配置（`crm_rule_configs` 中 customer_admission、duplicate_detection、lead_pool）。
+- 本次完成：
+  - 站内通知：顶栏铃铛（未读数）、`centers/system/notifications.php`（全部/未读、点开标为已读并跳转、全部标为已读）。写正式库已有的 `sys_notifications`（只用建表时就有的字段，类型以 `centers.` 开头，新系统只显示自己的通知，不动旧系统通知）。
+  - 权限申请通知：提交时通知所有能审批的人（按审批规则逐个判断，不含申请人和停用账号；紧急申请标题带【紧急】）；批准、拒绝、延长、撤销时通知申请人或授权人。
+  - 业务公共件：`Dictionary`（只读字典）、`DataScope`（数据范围按决定 1 计算）、`UserDirectory`（正常账号，按部门分组）。
+- 修改文件：`centers/_base/src/{Notify,Dictionary,DataScope,UserDirectory,Layout,Icon}.php`、`centers/_base/assets/base.css`、`centers/_base/tests/{harness,services_contract}.php`、`centers/system/{notifications.php,api.php}`、`centers/system/src/RequestService.php`、`centers/README.md`、`tools/ci_php_checks.sh`、本文件。
+- 检查结果：`services_contract.php` 47 项及前六组契约测试全部通过；本地无头浏览器七组全部通过（通知 11 项、设置 26 项等）。`tools/ci_php_checks.sh` 契约 82 项全部通过；`tools/ci_js_checks.sh` 26 项通过。
+- 尚未完成 / 下一步：明天开始客户中心第一批。
+
 ## 2026-10-15：客户中心 · 旧客户规则清单（待用户确认，无代码修改）
 
 - 上一步部署情况：PR #16（设置中心与日志）合并后自动部署成功，服务器 `5b35609`。

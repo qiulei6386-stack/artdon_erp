@@ -4,7 +4,9 @@ declare(strict_types=1);
 namespace Artdon\Centers\System;
 
 use Artdon\Centers\Base\Audit;
+use Artdon\Centers\Base\Auth;
 use Artdon\Centers\Base\Db;
+use Artdon\Centers\Base\Notify;
 use Artdon\Centers\Base\NotFoundException;
 use Artdon\Centers\Base\Permission;
 use Artdon\Centers\Base\PermissionException;
@@ -243,6 +245,16 @@ final class RequestService
         $after = ['permission_key' => $key, 'reason' => $reason, 'urgency' => $urgency, 'expected_days' => $days];
         $this->log($id, (int) $this->operator['id'], 'submit', null, $after, $reason);
         Audit::log('permission_request_submit', 'permission', 'request', $id, null, $after, $this->operator);
+        $request = $this->findRequest($id);
+        if ($request) {
+            Notify::send(
+                $this->approversFor($request),
+                'permission_request',
+                ($urgency === 'urgent' ? '【紧急】' : '') . $this->name($this->operator) . ' 申请权限 ' . $key,
+                '原因：' . $reason . '；需要 ' . $days . ' 天',
+                ['center' => 'system', 'path' => 'requests.php?view=approve']
+            );
+        }
         return $id;
     }
 
@@ -307,6 +319,13 @@ final class RequestService
         $after = ['grant_id' => $grantId, 'expires_at' => $expires, 'permanent' => $permanent];
         $this->log($id, (int) $request['requester_id'], 'approve', ['status' => 'pending'], $after, $note);
         Audit::log('permission_request_approve', 'permission', 'request', $id, ['status' => 'pending'], $after, $this->operator);
+        Notify::send(
+            [(int) $request['requester_id']],
+            'permission_approved',
+            '权限申请已批准：' . $key,
+            ($permanent ? '永久有效' : '有效期到 ' . substr((string) $expires, 0, 16)) . ($note !== '' ? '；备注：' . $note : '') . '；审批人：' . $this->name($this->operator),
+            ['center' => 'system', 'path' => 'requests.php']
+        );
         return $grantId;
     }
 
@@ -325,6 +344,13 @@ final class RequestService
             ->execute([(int) $this->operator['id'], (string) $this->operator['username'], $now, $why, $now, $id]);
         $this->log($id, (int) $request['requester_id'], 'reject', ['status' => 'pending'], ['status' => 'rejected', 'reason' => $why], $why);
         Audit::log('permission_request_reject', 'permission', 'request', $id, ['status' => 'pending'], ['status' => 'rejected', 'reason' => $why], $this->operator);
+        Notify::send(
+            [(int) $request['requester_id']],
+            'permission_rejected',
+            '权限申请未通过：' . (string) $request['permission_key'],
+            '原因：' . $why . '；审批人：' . $this->name($this->operator),
+            ['center' => 'system', 'path' => 'requests.php']
+        );
     }
 
     // ---------------------------------------------------------------- 授权
@@ -344,6 +370,13 @@ final class RequestService
         Permission::clearCache();
         $this->log(((int) $grant['request_id']) ?: null, (int) $grant['user_id'], 'revoke', ['status' => 'active'], ['status' => 'revoked', 'reason' => $why], $why);
         Audit::log('permission_grant_revoke', 'permission', 'grant', $grantId, ['status' => 'active'], ['status' => 'revoked', 'reason' => $why], $this->operator);
+        Notify::send(
+            [(int) $grant['user_id']],
+            'permission_revoked',
+            '临时授权已撤销：' . (string) $grant['permission_key'],
+            '原因：' . $why . '；操作人：' . $this->name($this->operator),
+            ['center' => 'system', 'path' => 'requests.php']
+        );
     }
 
     /** 延长到指定日期（当天 23:59:59），不能超过从今天起 90 天；永久授权不需要延长。 */
@@ -369,9 +402,44 @@ final class RequestService
         $this->pdo->prepare('UPDATE crm_permission_grants SET expires_at = ?, updated_at = ? WHERE id = ?')->execute([$expires, Db::now(), $grantId]);
         $this->log(((int) $grant['request_id']) ?: null, (int) $grant['user_id'], 'extend', ['expires_at' => $grant['expires_at']], ['expires_at' => $expires], $note);
         Audit::log('permission_grant_extend', 'permission', 'grant', $grantId, ['expires_at' => $grant['expires_at']], ['expires_at' => $expires], $this->operator);
+        Notify::send(
+            [(int) $grant['user_id']],
+            'permission_extended',
+            '临时授权已延长：' . (string) $grant['permission_key'],
+            '新的到期时间：' . substr($expires, 0, 10) . ($note !== '' ? '；备注：' . $note : ''),
+            ['center' => 'system', 'path' => 'requests.php']
+        );
     }
 
     // ---------------------------------------------------------------- 内部
+
+    /**
+     * 能审批这条申请的人（正常状态账号，按审批规则逐个判断，不含申请人）。
+     *
+     * @return list<int>
+     */
+    public function approversFor(array $request): array
+    {
+        $ids = [];
+        $rows = $this->pdo->query("SELECT id FROM crm_users WHERE status = 'active'")->fetchAll(PDO::FETCH_COLUMN);
+        foreach ($rows as $userId) {
+            $userId = (int) $userId;
+            if ($userId === (int) $request['requester_id']) {
+                continue;
+            }
+            $candidate = Auth::loadUser($userId);
+            if ($candidate && (new self($candidate, $this->pdo))->approveBlockedReason($request) === '') {
+                $ids[] = $userId;
+            }
+        }
+        return $ids;
+    }
+
+    private function name(array $user): string
+    {
+        $name = trim((string) ($user['real_name'] ?? ''));
+        return $name !== '' ? $name : (string) ($user['username'] ?? '');
+    }
 
     /** @return list<array<string, mixed>> */
     private function requests(string $where, array $params, int $limit): array

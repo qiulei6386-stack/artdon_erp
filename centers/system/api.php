@@ -7,6 +7,7 @@ require_once __DIR__ . '/bootstrap.php';
 
 use Artdon\Centers\Base\Api;
 use Artdon\Centers\Base\Flash;
+use Artdon\Centers\Base\Notify;
 use Artdon\Centers\System\AccountService;
 use Artdon\Centers\System\DepartmentService;
 use Artdon\Centers\System\PeopleService;
@@ -189,5 +190,10 @@ Api::run([
         (new SettingsService($user))->saveSecurity($input);
         Flash::set('success', '安全设置已保存，马上生效。');
         return ['message' => '已保存'];
+    }],
+    'notification_read_all' => ['method' => 'POST', 'handler' => static function (array $input, array $user): array {
+        $n = Notify::markAllRead((int) $user['id']);
+        Flash::set('success', $n > 0 ? '已将 ' . $n . ' 条通知标为已读。' : '没有未读通知。');
+        return ['message' => '已全部标为已读'];
     }],
 ]);
