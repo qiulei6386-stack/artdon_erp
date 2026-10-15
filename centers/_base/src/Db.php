@@ -17,6 +17,9 @@ final class Db
     /** @var array<string, bool> */
     private static $tables = [];
 
+    /** @var array<string, list<string>> */
+    private static $columns = [];
+
     public static function pdo(): PDO
     {
         if (self::$pdo === null) {
@@ -51,6 +54,7 @@ final class Db
     {
         self::$pdo = $pdo;
         self::$tables = [];
+        self::$columns = [];
     }
 
     /** 表是否存在（结果在本次请求内缓存）。 */
@@ -67,6 +71,32 @@ final class Db
             self::$tables[$table] = (int) $stmt->fetchColumn() > 0;
         }
         return self::$tables[$table];
+    }
+
+    /** 表的字段名（表不存在时为空）。只接受字母、数字、下划线组成的表名。 @return list<string> */
+    public static function columns(string $table): array
+    {
+        if (!preg_match('/^[A-Za-z0-9_]+$/', $table) || !self::tableExists($table)) {
+            return [];
+        }
+        if (!array_key_exists($table, self::$columns)) {
+            $pdo = self::pdo();
+            if ($pdo->getAttribute(PDO::ATTR_DRIVER_NAME) === 'sqlite') {
+                $names = array_column($pdo->query('PRAGMA table_info(' . $table . ')')->fetchAll(PDO::FETCH_ASSOC), 'name');
+            } else {
+                $stmt = $pdo->prepare('SELECT column_name FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = ? ORDER BY ordinal_position');
+                $stmt->execute([$table]);
+                $names = $stmt->fetchAll(PDO::FETCH_COLUMN);
+            }
+            self::$columns[$table] = array_map('strval', $names);
+        }
+        return self::$columns[$table];
+    }
+
+    /** “插入，已存在则跳过”的写法：MySQL 为 INSERT IGNORE，SQLite（测试）为 INSERT OR IGNORE。 */
+    public static function insertIgnore(): string
+    {
+        return self::pdo()->getAttribute(PDO::ATTR_DRIVER_NAME) === 'sqlite' ? 'INSERT OR IGNORE' : 'INSERT IGNORE';
     }
 
     /** 当前时间字符串，统一由 PHP 生成，避免依赖数据库函数。 */

@@ -9,7 +9,9 @@ use Artdon\Centers\Base\Api;
 use Artdon\Centers\Base\Flash;
 use Artdon\Centers\Base\Url;
 use Artdon\Centers\Customer\ContactService;
+use Artdon\Centers\Customer\CustomerMerger;
 use Artdon\Centers\Customer\CustomerService;
+use Artdon\Centers\Customer\LeadPool;
 use Artdon\Centers\Customer\DuplicateFinder;
 use Artdon\Centers\Customer\Country;
 
@@ -96,5 +98,29 @@ Api::run([
         $contacts($user)->delete($id($input));
         Flash::set('success', '联系人已删除。');
         return ['message' => '已删除'];
+    }],
+    'customer_merge' => ['method' => 'POST', 'handler' => static function (array $input, array $user) use ($ids): array {
+        $list = $ids($input);
+        if (!empty($input['other_id'])) {
+            $list[] = (int) $input['other_id'];
+        }
+        $r = (new CustomerMerger($user))->merge($list, (int) ($input['master_id'] ?? 0));
+        Flash::set('success', '已合并 ' . count($r['merged_ids']) . ' 个客户到这里，联系人、跟进等记录都已转过来。');
+        return ['message' => '已合并', 'redirect' => Url::center('customer', 'view.php?id=' . $r['master_id'])];
+    }],
+    'lead_confirm' => ['method' => 'POST', 'handler' => static function (array $input, array $user) use ($id): array {
+        $customerId = (new LeadPool($user))->confirm($id($input, 'lead_id'), $input);
+        Flash::set('success', '已确认入库，成为正式客户。');
+        return ['message' => '已入库', 'redirect' => Url::center('customer', 'view.php?id=' . $customerId)];
+    }],
+    'lead_attach' => ['method' => 'POST', 'handler' => static function (array $input, array $user) use ($id): array {
+        $added = (new LeadPool($user))->attach($id($input, 'lead_id'), $id($input, 'customer_id'), !empty($input['add_contacts']));
+        Flash::set('success', '已关联到已有客户' . ($added ? '，补上了 ' . $added . ' 个联系人' : '') . '。');
+        return ['message' => '已关联', 'redirect' => Url::center('customer', 'leads.php')];
+    }],
+    'lead_reject' => ['method' => 'POST', 'handler' => static function (array $input, array $user) use ($id): array {
+        (new LeadPool($user))->reject($id($input, 'lead_id'), (string) ($input['reason'] ?? ''));
+        Flash::set('success', '已丢弃。');
+        return ['message' => '已丢弃', 'redirect' => Url::center('customer', 'leads.php')];
     }],
 ]);

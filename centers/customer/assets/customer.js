@@ -42,6 +42,13 @@
       button.addEventListener('click', function () {
         var dialog = document.getElementById(button.getAttribute('data-bulk-open'));
         if (!dialog) return;
+        var count = selected().length;
+        var min = parseInt(button.getAttribute('data-min') || '1', 10);
+        var max = parseInt(button.getAttribute('data-max') || '500', 10);
+        if (count < min || count > max) {
+          window.Centers.toast(count < min ? '请至少选 ' + min + ' 个客户' : '一次最多 ' + max + ' 个客户', 'error');
+          return;
+        }
         var form = dialog.querySelector('form');
         if (form) form.reset();
         dialog.querySelectorAll('.field-error[data-js]').forEach(function (n) { n.remove(); });
@@ -54,6 +61,22 @@
           input.value = id;
           holder.appendChild(input);
         });
+        var mergeList = dialog.querySelector('[data-merge-list]');
+        if (mergeList) {
+          mergeList.querySelectorAll('label').forEach(function (n) { n.remove(); });
+          rows.filter(function (c) { return c.checked; }).forEach(function (c, i) {
+            var label = el('label', 'check');
+            var radio = el('input');
+            radio.type = 'radio';
+            radio.name = 'master_id';
+            radio.value = c.value;
+            radio.required = true;
+            if (i === 0) radio.checked = true;
+            label.appendChild(radio);
+            label.appendChild(el('span', '', c.getAttribute('data-name') + '（#' + c.value + '）'));
+            mergeList.appendChild(label);
+          });
+        }
         refresh();
         dialog.showModal();
       });

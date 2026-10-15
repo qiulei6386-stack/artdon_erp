@@ -16,6 +16,7 @@ use Artdon\Centers\Customer\Country;
 use Artdon\Centers\Customer\CustomerForm;
 use Artdon\Centers\Customer\CustomerLog;
 use Artdon\Centers\Customer\CustomerService;
+use Artdon\Centers\Customer\DuplicateFinder;
 
 $user = Auth::requirePage();
 Auth::requirePermissionPage('customer.view');
@@ -53,6 +54,9 @@ if ($canContacts) {
     $tabs['contacts'] = '联系人 ' . count($contacts);
 }
 $tabs['followups'] = '跟进 ' . (int) $c['followup_count'];
+if (!$deleted && $service->can('customer.merge')) {
+    $tabs['duplicates'] = '查重';
+}
 if ($can['logs']) {
     $tabs['logs'] = '日志';
 }
@@ -242,6 +246,42 @@ Layout::start([
   <?php if ((int) $c['followup_count'] > count($c['followups'])): ?><div class="card-body muted">只显示最近 <?= count($c['followups']) ?> 条，共 <?= (int) $c['followup_count'] ?> 条。</div><?php endif; ?>
   <?php endif; ?>
 </section>
+<?php endif; ?>
+
+<?php if ($tab === 'duplicates'):
+    $first = $contacts[0] ?? [];
+    $dups = DuplicateFinder::find($c + ['contact_email' => $first['email'] ?? '', 'contact_phone' => $first['phone'] ?? ''], $id); ?>
+<section class="card">
+  <div class="card-head"><h2 class="card-title">疑似重复的客户 <?= count($dups) ?></h2><span class="muted">和全部客户比对：名称相似、邮箱、电话、WhatsApp、网站域名、联系人邮箱和电话</span></div>
+  <?php if (!$dups): ?>
+    <div class="card-body muted">没有找到疑似重复的客户。</div>
+  <?php else: ?>
+  <ul class="dup-list card-body" style="margin:0">
+    <?php foreach ($dups as $m): ?>
+      <li class="dup-item">
+        <div class="dup-item-body">
+          <a class="row-link" href="<?= Layout::e(Url::center('customer', 'view.php?id=' . $m['customer_id'])) ?>"><?= Layout::e($m['customer_name']) ?></a>
+          <small><?= Layout::e('#' . $m['customer_id'] . ' · ' . Country::label($m['country']) . ($m['city'] !== '' ? ' ' . $m['city'] : '') . ' · 负责人：' . ($m['owner_name'] !== '' ? $m['owner_name'] : '公海') . ' · ' . DuplicateFinder::reasonText($m['reasons'])) ?></small>
+        </div>
+        <span class="dup-score"><?= (int) $m['similarity'] ?>%</span>
+        <button type="button" class="btn btn-sm" data-open-dialog="d-merge-one" data-fill="<?= Layout::e((string) json_encode(['other_id' => $m['customer_id'], 'other_name' => $m['customer_name']], JSON_UNESCAPED_UNICODE)) ?>">合并进来</button>
+      </li>
+    <?php endforeach; ?>
+  </ul>
+  <?php endif; ?>
+</section>
+<dialog class="dialog dialog-sm" id="d-merge-one" aria-labelledby="d-merge-one-title">
+  <form data-api action="<?= Layout::e($api) ?>?action=customer_merge">
+    <div class="dialog-head"><h2 class="dialog-title" id="d-merge-one-title">合并客户</h2><button type="button" class="icon-btn" data-close-dialog aria-label="关闭">×</button></div>
+    <div class="dialog-body stack">
+      <p class="alert alert-error form-error" data-form-error hidden></p>
+      <input type="hidden" name="ids[]" value="<?= $id ?>"><input type="hidden" name="other_id" value=""><input type="hidden" name="master_id" value="<?= $id ?>">
+      <p style="margin:0">把“<strong data-text="other_name"></strong>”合并到当前客户“<?= Layout::e((string) $c['customer_name']) ?>”。它的联系人、跟进、拜访、商机、邮件、报价订单等都会转过来，然后它被删除。</p>
+      <p class="alert alert-warning" style="margin:0">合并后不能撤销。</p>
+    </div>
+    <div class="dialog-foot"><button type="button" class="btn" data-close-dialog>取消</button><button type="submit" class="btn btn-danger">合并</button></div>
+  </form>
+</dialog>
 <?php endif; ?>
 
 <?php if ($tab === 'logs'): $logs = CustomerLog::forCustomer($id); ?>

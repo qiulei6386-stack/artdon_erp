@@ -1,5 +1,16 @@
 # Artdon ERP 工作上下文
 
+## 2026-10-15：客户中心第二批（一）· 暂存池处理与合并客户（新系统）
+
+- 上一步：PR #20 客户中心第一批，服务器 `9a56758`。第二批分三小批：（一）暂存池与合并（本次）；（二）分组管理、多地址、聊天群、关系图谱；（三）导入导出、名片识别。
+- 本次完成：
+  - 暂存池 `centers/customer/leads.php`（待处理 / 有疑似重复 / 已处理 / 已丢弃，搜索）与 `lead.php`：打开时重新查重；确认入库（核对、修改资料后建成正式客户，联系人一起建；负责人默认暂存里写的负责人或提交人）；关联已有客户（可选把联系人补过去，邮箱或电话已有的跳过）；丢弃（必须写原因）。处理后通知提交人。能读旧系统写入的各种格式（raw_ 字段、contacts_json、contact_ 字段、逗号分隔），格式不对的联系人邮箱挪到备注不丢。两人同时处理时只有一个成功。
+  - 合并客户：列表勾选 2-10 个 →“合并”选主客户；详情“查重”标签 →“合并进来”。做法同旧系统（转移联系人、地址、聊天群、跟进、文件、事件、时间轴、日志、任务、拜访、商机、推广、邮件、草稿、暂存池、报价订单、报价客户等；唯一性表复制去重；被合并客户的负责人变协助；被合并客户软删除，原因“合并到客户 #编号：名称”）。新增：主客户空着的资料用被合并客户补上；只保留一个主联系人；主客户在公海时第一个负责人成为第一负责人。需要 `customer.merge`。
+  - 底座 `Db::columns()`、`Db::insertIgnore()`。
+- 修改文件：`centers/customer/{leads.php,lead.php,index.php,view.php,api.php}`、`centers/customer/src/{LeadPool,CustomerMerger,CustomerService,CustomerLog}.php`、`centers/customer/assets/*`、`centers/customer/tests/{leads_merge_contract,schema}.php`、`centers/_base/src/Db.php`、`centers/README.md`、`tools/ci_php_checks.sh`、本文件。
+- 检查结果：`leads_merge_contract.php` 46 项、`customer_contract.php` 99 项通过；本地浏览器暂存池与合并 22 项、客户中心 39 项通过；`tools/ci_php_checks.sh` 契约 84 项全部通过；`tools/ci_js_checks.sh` 26 项通过。
+- 尚未完成 / 下一步：第二批（二）分组管理、多地址、聊天群、关系图谱。
+
 ## 2026-10-15：客户中心第一批（新系统）
 
 - 上一步：PR #19 记录第二批范围，服务器 `649701d`。
