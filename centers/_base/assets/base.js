@@ -5,6 +5,7 @@
  *   弹窗：<button data-open-dialog="d-edit" data-fill='{"id":1,"real_name":"王磊"}'> 打开 <dialog id="d-edit">，
  *         并把 data-fill 里的值填进弹窗表单里同名的输入框、以及 [data-text="键名"] 元素
  *   接口表单：<form data-api action="api.php?action=xxx">，提交时用接口发送，
+ *         成功时先在表单上触发可取消的 centers:api-success 事件（detail 为接口结果），
  *         成功后刷新页面（返回 data.password 时先弹出密码），失败时把错误显示在对应输入框下
  * 不依赖任何框架。
  */
@@ -213,6 +214,9 @@
           showErrors(form, (result.data || {}).errors, result.message || '操作失败');
           return;
         }
+        // 页面脚本可以监听 centers:api-success 自己处理结果（调用 preventDefault 后不再刷新页面）
+        var hook = new CustomEvent('centers:api-success', { bubbles: true, cancelable: true, detail: result });
+        if (!form.dispatchEvent(hook)) return;
         var dialog = form.closest('dialog');
         if (result.data && result.data.password) {
           if (dialog) dialog.close();

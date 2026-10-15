@@ -42,12 +42,16 @@ final class Layout
     /** @var list<string> 本页额外加载的脚本地址 */
     private static $scripts = [];
 
+    /** @var list<string> 页面自己的样式表 */
+    private static $styles = [];
+
     /**
-     * @param array{title?: string, nav?: string, crumbs?: array<string, ?string>, scripts?: list<string>} $opts
+     * @param array{title?: string, nav?: string, crumbs?: array<string, ?string>, scripts?: list<string>, styles?: list<string>} $opts
      */
     public static function start(array $opts): void
     {
         self::$scripts = $opts['scripts'] ?? [];
+        self::$styles = $opts['styles'] ?? [];
         $title = (string) ($opts['title'] ?? '');
         $crumbs = $opts['crumbs'] ?? [$title => null];
         $user = Auth::user();
@@ -177,6 +181,9 @@ final class Layout
         echo '<meta name="centers-login" content="' . self::e(Url::center('system', 'login.php')) . '">';
         echo '<title>' . self::e($full) . '</title>';
         echo '<link rel="stylesheet" href="' . self::e(Url::asset('base.css')) . '">';
+        foreach (self::$styles as $href) {
+            echo '<link rel="stylesheet" href="' . self::e($href) . '">';
+        }
         echo '</head><body class="body-' . self::e($bodyClass) . '">';
         echo '<a class="skip" href="#main">跳到主要内容</a>';
     }

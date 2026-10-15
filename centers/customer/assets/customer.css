@@ -1,0 +1,34 @@
+/* 客户中心 */
+.bulkbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 14px; background: var(--c-brand-soft); border-bottom: 1px solid var(--c-brand-line); color: var(--c-brand-ink); }
+.cell-main { overflow: hidden; }
+.cell-main .badge { margin-left: 4px; }
+.cell-sub { display: block; color: var(--c-faint); font-size: var(--fs-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row-link { color: var(--c-ink); font-weight: 500; text-decoration: none; }
+.row-link:hover { color: var(--c-brand-ink); text-decoration: underline; }
+.table td.cell-main, .table td.truncate { padding-top: 6px; padding-bottom: 6px; }
+.cell-actions { white-space: nowrap; }
+.text-bad { color: var(--c-bad); }
+.text-warn { color: var(--c-warn); }
+.is-dim td { color: var(--c-faint); }
+.row-note td { height: auto; padding: 0 12px 8px 24px; color: var(--c-muted); font-size: var(--fs-sm); border-top: 0; }
+.form-section { margin-top: 4px; padding-bottom: 6px; border-bottom: 1px solid var(--c-line-soft); font-weight: 600; color: var(--c-ink-2); }
+.form-section .muted { font-weight: 400; margin-left: 6px; }
+.check-group { border: 0; padding: 0; margin: 0; min-width: 0; }
+.check-group legend { padding: 0; margin-bottom: 6px; }
+.check-list { display: flex; flex-wrap: wrap; gap: 6px 16px; }
+.select-multi { height: auto; min-height: 92px; padding: 4px; }
+.dl-wide { grid-template-columns: 96px minmax(0, 1fr); }
+.pre { white-space: pre-wrap; }
+.card-link { font-size: var(--fs-sm); }
+.mini-item { padding-bottom: 8px; border-bottom: 1px solid var(--c-line-soft); }
+.mini-item:last-child { border-bottom: 0; padding-bottom: 0; }
+.clamp-3 { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.page-title .badge { vertical-align: middle; margin-left: 6px; }
+.dup-list { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.dup-item { display: flex; gap: 12px; align-items: center; padding: 10px 12px; border: 1px solid var(--c-line); border-radius: var(--radius); }
+.dup-item-body { flex: 1 1 auto; min-width: 0; }
+.dup-item-body small { display: block; color: var(--c-muted); }
+.dup-score { flex: 0 0 auto; font-weight: 600; color: var(--c-warn); }
+@media (max-width: 600px) {
+  .dl-wide { grid-template-columns: 80px minmax(0, 1fr); }
+}
