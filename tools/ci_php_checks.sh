@@ -113,6 +113,7 @@ contract_tests=(
   material_center_v1/tests/route_mapping_v3_test.php
   material_center_v1/tests/source_material_organizer_contract.php
   material_center_v1/tests/unified_permission_contract_test.php
+  centers/system/tests/stage1_contract.php
 )
 
 contract_passed=0
