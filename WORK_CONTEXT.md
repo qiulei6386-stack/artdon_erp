@@ -1,6 +1,6 @@
 # Artdon ERP 工作上下文
 
-## 2026-10-15：邮箱系统第一批（一）按原型重做界面 · 风格 C（PR #25 未合并）
+## 2026-10-16：邮箱系统第一批（一）按原型重做界面 · 风格 C（PR #26）
 
 - 起因：用户给了推广中心原型（`preview.html`），认为第一版邮箱界面太简单，“只学了颜色风格，功能差得远”。用户选择：先重做邮箱、再改客户中心；整体改用原型的**风格 C（卡片画廊 + 侧边抽屉）**；邮箱主界面用“工作台 + 三栏收件箱”。
 - 本次完成：
@@ -11,8 +11,8 @@
   - 邮箱设置 `accounts.php`：统计卡 + 邮箱卡片画廊（状态、默认、30 天收发、未读、总数）+ 右侧抽屉（测试收发、设置明细、签名预览、设为默认 / 停用 / 删除）。
 - 修改文件：`centers/_base/assets/base.css`、`centers/_base/src/Layout.php`、`centers/mail/{index,inbox,read,accounts}.php`、`centers/mail/src/{Mailbox,MailDashboard,MailAccounts,MailView}.php`、`centers/mail/assets/{mail.css,mail.js}`、`centers/mail/tests/mailbox_contract.php`、本文件。
 - 检查结果：`mailbox_contract.php` 99 项通过（新增分类与筛选一致性、工作台统计、邮箱统计）；本地浏览器邮箱 63 项通过（工作台、三栏读信、标签筛选、关联、批量、邮箱设置卡片与抽屉、手机读信与返回、只读查看、权限）；客户中心与系统中心浏览器测试回归通过；`tools/ci_php_checks.sh` 契约 87 项、`tools/ci_js_checks.sh` 26 项通过。
-- 服务器部署：未部署。PR #25 未合并，服务器仍为 `fe61a74`。
-- 下一步：用户确认新界面后合并 PR #25 并部署，服务器运行 `php centers/_base/tools/mail_setup.php`；然后按同样结构改客户中心；再做邮箱第一批（二）写信、回复、转发、草稿。
+- 部署情况更正：10-15 18:49 用户叫停前，合并 PR #25 的请求已经执行，第一版邮箱界面（`13582a3`）当时已合并并部署到服务器（部署成功）。重做的界面没有进 PR #25，改为从 main 新建分支 `claude/mail-1a-ui` 提 PR #26。用户 10-16 确认“上线吧”。
+- 下一步：PR #26 合并部署后，服务器运行 `php centers/_base/tools/mail_setup.php`；然后按同样结构改客户中心；再做邮箱第一批（二）写信、回复、转发、草稿。
 
 ## 2026-10-15：邮箱系统第一批（一）· 邮箱账号、收件箱、读信（新系统）
 
