@@ -6624,6 +6624,19 @@ body.is-actionbar-resizing * {
   font-size: 12px;
 }
 .customer-filter-group label { display: grid; gap: 4px; }
+.customer-filter-owner-mode { display: grid; gap: 4px; }
+.customer-filter-owner-mode > span {
+  color: var(--crm-muted-text);
+  font-size: 11px;
+  font-weight: 850;
+}
+.customer-filter-owner-mode .customer-filter-chips .tag-chip {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 5px;
+  width: auto;
+}
 .customer-filter-group small { color: var(--crm-muted-text); font-size: 10px; line-height: 1.35; }
 .customer-filter-group select option[hidden] { display: none; }
 .customer-selected-filter-chips {

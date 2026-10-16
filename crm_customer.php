@@ -873,6 +873,18 @@ function crm_customer_owner_match_sql(int $userId, array &$params): string
     return '(c.owner_user_id = ? OR EXISTS (SELECT 1 FROM crm_customer_owners co WHERE co.customer_id = c.id AND co.user_id = ?))';
 }
 
+function crm_customer_owner_primary_match_sql(int $userId, array &$params): string
+{
+    $params[] = $userId;
+    return "(COALESCE((SELECT co.user_id FROM crm_customer_owners co WHERE co.customer_id = c.id AND (co.is_primary = 1 OR co.role_type = 'primary') ORDER BY co.is_primary DESC, CASE WHEN co.role_type = 'primary' THEN 0 ELSE 1 END, co.id ASC LIMIT 1), c.owner_user_id) = ?)";
+}
+
+function crm_customer_owner_filter_sql(int $userId, string $mode, array &$params): string
+{
+    if (trim($mode) === 'any') return crm_customer_owner_match_sql($userId, $params);
+    return crm_customer_owner_primary_match_sql($userId, $params);
+}
+
 function crm_customer_addresses(int $customerId): array
 {
     $stmt = db()->prepare('SELECT * FROM crm_customer_addresses WHERE customer_id = ? AND deleted_at IS NULL ORDER BY is_primary DESC, id ASC');
@@ -1749,7 +1761,7 @@ function crm_customer_list(array $input): array
         $params[] = trim((string)$input['promotion_status']);
     }
     if (($input['owner_user_id'] ?? '') !== '') {
-        $where[] = crm_customer_owner_match_sql((int)$input['owner_user_id'], $params);
+        $where[] = crm_customer_owner_filter_sql((int)$input['owner_user_id'], (string)($input['owner_match'] ?? ''), $params);
     }
     $createdRange = trim((string)($input['created_range'] ?? ''));
     if ($createdRange === 'today') {

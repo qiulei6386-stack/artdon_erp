@@ -1,5 +1,16 @@
 # Artdon ERP 工作上下文
 
+## 2026-10-16：旧客户中心高级筛选 · 负责人两种匹配
+
+- 上一步：邮箱系统第一批（一），`centers/mail/`，提交 `13582a3`。本次只改旧版 `crm.php` 客户中心高级筛选，不改新客户中心。
+- 本次完成：高级筛选「负责人」旁增加匹配方式。**仅第一负责人**（默认）只匹配列表里显示的第一负责人：`crm_customer_owners` 里 `is_primary = 1` 或 `role_type = 'primary'` 的第一条，没有这种记录时才用客户表 `owner_user_id`。**含协助**保持原来的宽匹配（`owner_user_id` 或 `crm_customer_owners` 任意一行）。快捷筛选「我的客户」仍含协助人。列表和导出都走 `crm_customer_list`，参数名 `owner_match`：`primary`（缺省、空值或其他值）或 `any`。
+- 新客户中心 `centers/customer` 的负责人下拉仍是「第一负责人或协助」（`CustomerScope::mineSql`），这次没有改。
+- 修改文件：`crm.php`、`crm_customer.php`、`assets/crm/crm.js`、`assets/crm/crm.css`、`tests/crm_customer_owner_filter_contract.php`、`tools/ci_php_checks.sh`、本文件。
+- 检查结果：见本分支提交说明。未连正式库，没有用 sukie / Winnie 的正式账号点选。
+- 服务器部署情况：本环境不能把分支检出到 `/www/wwwroot/Artdon/artdon_erp/`。正式目录只在本分支合并进 `main` 后由 GitHub Actions 快进。
+- Git 提交号及推送状态：见本分支提交。正式目录未快进。
+- 尚未完成：合并后用正式账号在旧客户中心选 sukie「仅第一负责人」，结果里不应再出现只把 sukie 列为协助的客户；改选「含协助」后那些客户应重新出现。
+
 ## 2026-10-15：邮箱系统第一批（一）· 邮箱账号、收件箱、读信（新系统）
 
 - 上一步：PR #24 邮箱规则清单，服务器 `fe61a74`。用户确认 6 项决定：过渡期旧定时任务继续收信、新系统发信时自己立即发；一次性工具迁移加密种子；`mail.account_manage_all` 只管账号不能读信，读别人的信需要新权限 `mail.view_all` 且留日志；客户详情邮件标签按 `customer.mail_summary`；撤回保留（改名“发送撤回通知”）；产品资料附件、Office 预览放第三批。

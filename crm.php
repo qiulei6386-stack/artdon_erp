@@ -553,6 +553,14 @@ $prefStyle = sprintf(
                     <?php endforeach; ?>
                   </select>
                 </label>
+                <div class="customer-filter-owner-mode">
+                  <span>匹配方式</span>
+                  <div class="customer-filter-chips" role="radiogroup" aria-label="负责人匹配方式">
+                    <label class="tag-chip"><input type="radio" name="customer_owner_match" data-filter-owner-mode value="primary" checked><span>仅第一负责人</span></label>
+                    <label class="tag-chip"><input type="radio" name="customer_owner_match" data-filter-owner-mode value="any"><span>含协助</span></label>
+                  </div>
+                </div>
+                <small>仅第一负责人只看客户的第一负责人；含协助同时包含协助人。</small>
               </section>
               <section class="customer-filter-group">
                 <h3>业务状态</h3>

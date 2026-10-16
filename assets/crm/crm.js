@@ -3401,6 +3401,7 @@
         status: document.querySelector('[data-filter-status]')?.value || '',
         promotion_status: document.querySelector('[data-filter-promotion-status]')?.value || '',
         owner_user_id: document.querySelector('[data-filter-owner]')?.value || '',
+        owner_match: this.ownerMatchValue(),
         deleted: document.querySelector('[data-filter-deleted]')?.value || '',
         business_filter: business ? business.value : '',
         created_range: document.querySelector('[data-filter-created-range]')?.value || '',
@@ -3419,13 +3420,25 @@
           select.value = '';
         }
       });
+      this.setOwnerMatchValue('primary');
       this.filterCountryOptions('');
       this.filterCityOptionsForCountry('', true);
       this.renderAdvancedSelectedFilters();
     },
+    ownerMatchValue: function () {
+      var selected = document.querySelector('[data-filter-owner-mode]:checked');
+      return selected && selected.value === 'any' ? 'any' : 'primary';
+    },
+    setOwnerMatchValue: function (mode) {
+      var next = mode === 'any' ? 'any' : 'primary';
+      document.querySelectorAll('[data-filter-owner-mode]').forEach(function (input) {
+        input.checked = input.value === next;
+      });
+    },
     hasAdvancedFilters: function () {
       var advanced = (this.filterState && this.filterState.advanced) || {};
       return Object.keys(advanced).some(function (key) {
+        if (key === 'owner_match') return false;
         var value = advanced[key];
         return Array.isArray(value) ? value.length > 0 : String(value || '') !== '';
       });
@@ -3461,6 +3474,7 @@
       this.filterCityOptionsForCountry(countries, true);
       this.setCityFilterValue(advanced.city || '');
       this.setSelectValues('[data-filter-level]', levels);
+      this.setOwnerMatchValue(advanced.owner_match || 'primary');
       this.renderAdvancedSelectedFilters();
       document.querySelectorAll('[data-customer-filter]').forEach(function (item) {
         item.classList.toggle('active', item.getAttribute('data-customer-filter') === (CustomerModule.filterState.quick || 'all'));
@@ -3494,6 +3508,7 @@
         status: advanced.status || '',
         promotion_status: advanced.promotion_status || '',
         owner_user_id: advanced.owner_user_id || '',
+        owner_match: advanced.owner_match === 'any' ? 'any' : 'primary',
         deleted: advanced.deleted || '',
         business_filter: advanced.business_filter || '',
         created_range: advanced.created_range || '',
@@ -3718,7 +3733,7 @@
       if (sources.length) parts.push('来源：' + sources.join(','));
       if (status) parts.push('状态：' + status);
       if (promotion) parts.push('推广：' + promotion);
-      if (owner) parts.push('负责人：' + owner);
+      if (owner) parts.push('负责人：' + owner + (advanced.owner_match === 'any' ? '（含协助）' : '（仅第一负责人）'));
       if (business) parts.push('业务：' + business);
       if (created) parts.push('创建：' + created);
       if (follow) parts.push('跟进：' + follow);

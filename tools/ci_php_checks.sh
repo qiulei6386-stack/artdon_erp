@@ -45,6 +45,7 @@ contract_tests=(
   tests/quote_bom_versions_contract.php
   tests/crm_promotion_execution_contract.php
   tests/crm_customer_channel_filter_contract.php
+  tests/crm_customer_owner_filter_contract.php
   tests/quote_order_page_contract.php
   tests/quote_mail_contract.php
   tests/quote_shipment_batch_contract.php
