@@ -43,6 +43,29 @@ jobs:
           /www/server/php/80/bin/php -m | grep -i -E "imagick|gd" | tr '\n' ' '
           ls "$S/assets/vendor/pdfjs"
           /www/server/php/80/bin/php "$T/tests/run.php" | tail -1
+          # 测试版改用腾讯云 TokenHub（混元迁移后的新平台）
+          sed -i "s/'provider' => '[a-z]*'/'provider' => 'tokenhub'/" "$T/config.php"
+          grep -o "'provider' => '[a-z]*'" "$T/config.php"
+          # 用上一次上传转好的页面实际调一次接口
+          cat > /tmp/spec_smoke.php <<'PHP'
+          <?php
+          require '/www/wwwroot/novlight-tools-test/src/bootstrap.php';
+          $dirs = glob(rtrim($config['upload_dir'], '/') . '/spec/*', GLOB_ONLYDIR) ?: [];
+          natsort($dirs);
+          $files = [];
+          foreach (array_reverse($dirs) as $d) { $files = glob($d . '/p-*.jpg') ?: []; if ($files) break; }
+          if (!$files) { echo "没有可测试的页面\n"; exit(0); }
+          natsort($files);
+          $t = microtime(true);
+          try {
+              $items = (new SpecExtractor($config))->extract(array_values($files), '', 'smoke.pdf');
+              echo '接口正常，', count($files), ' 页，用时 ', round(microtime(true) - $t, 1), " 秒\n";
+              foreach ($items as $it) { echo json_encode(array_intersect_key($it, array_flip(['brand','model','type','cutout_mm','diameter_mm','height_mm','watt','lumen','tilt_deg','ugr_max','ip'])), JSON_UNESCAPED_UNICODE), "\n"; }
+          } catch (Throwable $e) { echo '接口出错：', $e->getMessage(), "\n"; }
+          PHP
+          sed -i 's/^          //' /tmp/spec_smoke.php
+          sudo -u www /www/server/php/80/bin/php /tmp/spec_smoke.php 2>&1 | tail -8 || true
+          rm -f /tmp/spec_smoke.php
           REMOTE
           ) && rc=0 || rc=$?
           echo "::notice title=update::$(printf '%s' "$out" | tail -20 | tr '\n' '|')"
