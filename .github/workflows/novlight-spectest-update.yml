@@ -64,6 +64,8 @@ jobs:
           } catch (Throwable $e) { echo '接口出错：', $e->getMessage(), "\n"; }
           PHP
           sed -i 's/^          //' /tmp/spec_smoke.php
+          KEY=$(/www/server/php/80/bin/php -r '$a=include "/www/server/artdon_secrets/hunyuan.php"; echo $a["api_key"];')
+          curl -sS -m 30 -H "Authorization: Bearer $KEY" https://tokenhub.tencentmaas.com/v1/models | /www/server/php/80/bin/php -r '$d=json_decode(stream_get_contents(STDIN),true); $ids=array_map(fn($m)=>$m["id"]??"", $d["data"]??[]); echo "模型数 ", count($ids), "：", implode(" ", $ids), "\n"; if(!$ids) echo substr(json_encode($d,JSON_UNESCAPED_UNICODE),0,400),"\n";' || true
           sudo -u www /www/server/php/80/bin/php /tmp/spec_smoke.php 2>&1 | tail -8 || true
           rm -f /tmp/spec_smoke.php
           REMOTE
