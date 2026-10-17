@@ -35,12 +35,19 @@ jobs:
           SERVER_PORT: ${{ secrets.SERVER_PORT }}
           SERVER_USER: ${{ secrets.SERVER_USER }}
         run: |
-          ssh $SSHOPT -p "$SERVER_PORT" "${SERVER_USER}@${SERVER_HOST}" 'bash -s' <<'REMOTE'
-          set -eu
+          out=$(ssh $SSHOPT -p "$SERVER_PORT" "${SERVER_USER}@${SERVER_HOST}" 'bash -s' 2>&1 <<'REMOTE'
           id
-          for d in /www/wwwroot /www/wwwroot/Artdon /www/server/artdon_secrets; do ls -ld "$d"; [ -w "$d" ] && echo "可写 $d" || { echo "不可写 $d"; exit 1; }; done
-          [ -r /www/wwwroot/novlight-tools/data/app.sqlite ] && [ -r /www/wwwroot/novlight-tools/config.php ]
+          sudo -n true 2>/dev/null && echo "SUDO=yes" || echo "SUDO=no"
+          for d in /www/wwwroot /www/wwwroot/Artdon /www/server/artdon_secrets /www/wwwroot/novlight-tools /www/wwwroot/novlight-tools/data; do
+            echo "$(stat -c '%U:%G %a' "$d" 2>&1) $d $([ -w "$d" ] && echo W || echo -)"
+          done
+          for f in /www/wwwroot/novlight-tools/data/app.sqlite /www/wwwroot/novlight-tools/config.php; do echo "$(stat -c '%U:%G %a' "$f" 2>&1) $f $([ -r "$f" ] && echo R || echo -)"; done
+          command -v pdftoppm php || true; ls -d /www/server/php/*/bin/php 2>/dev/null
           REMOTE
+          ) || true
+          echo "::notice title=server::$(printf '%s' "$out" | tr '\n' '|')"
+          printf '%s' "$out" | grep -q '/www/wwwroot/Artdon W' || exit 1
+          printf '%s' "$out" | grep -q '/www/wwwroot W' || exit 1
 
       - name: Install spectest
         env:
