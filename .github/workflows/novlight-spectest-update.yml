@@ -1,0 +1,55 @@
+# 一次性：更新 novlight.com/spectest/ 测试版的程序（保留测试版的配置、数据和密钥）
+name: Update novlight spectest
+
+on:
+  push:
+    branches:
+      - novlight-spectest-deploy
+
+permissions:
+  contents: read
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Upload and update
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_PORT: ${{ secrets.SERVER_PORT }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          umask 077
+          printf '%s\n' "$SERVER_SSH_KEY" | tr -d '\r' > "$RUNNER_TEMP/k"
+          O="-i $RUNNER_TEMP/k -o BatchMode=yes -o ConnectTimeout=15 -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=.github/known_hosts"
+          scp $O -P "$SERVER_PORT" payload/novlight-tools-test.tar.gz "${SERVER_USER}@${SERVER_HOST}:/tmp/"
+          out=$(ssh $O -p "$SERVER_PORT" "${SERVER_USER}@${SERVER_HOST}" 'sudo -n bash -s' 2>&1 <<'REMOTE'
+          set -euo pipefail
+          trap 'rm -f /tmp/novlight-tools-test.tar.gz' EXIT
+          T=/www/wwwroot/novlight-tools-test
+          [ -f "$T/config.php" ] || { echo "测试版未安装"; exit 1; }
+          N=$T.new; rm -rf "$N"; mkdir "$N"
+          tar xzf /tmp/novlight-tools-test.tar.gz -C "$N" --strip-components=1
+          cp -a "$T/config.php" "$N/config.php"; rm -rf "$N/data"; mv "$T/data" "$N/data"
+          rm -rf "$T.old"; mv "$T" "$T.old"; mv "$N" "$T"; rm -rf "$T.old"
+          chown -R www:www "$T"
+          S=/www/wwwroot/Artdon/spectest
+          rm -rf "$S/assets"; cp -a "$T/public/assets" "$S/assets"; cp -a "$T/public/.user.ini" "$S/.user.ini"; chown -R www:www "$S"
+          /www/server/php/80/bin/php -r 'echo "disable_functions=", ini_get("disable_functions"), "\n";'
+          /www/server/php/80/bin/php -m | grep -i -E "imagick|gd" | tr '\n' ' '
+          ls "$S/assets/vendor/pdfjs"
+          /www/server/php/80/bin/php "$T/tests/run.php" | tail -1
+          REMOTE
+          ) && rc=0 || rc=$?
+          echo "::notice title=update::$(printf '%s' "$out" | tail -20 | tr '\n' '|')"
+          exit $rc
+
+      - name: Verify
+        run: |
+          curl --fail -sS --max-time 30 https://novlight.com/spectest/index.php?r=login | grep -q '登录'
+          curl --fail -sS --max-time 30 -o /dev/null https://novlight.com/spectest/assets/vendor/pdfjs/pdf.js
+          curl --fail -sS --max-time 30 https://novlight.com/spectest/assets/js/app.js | grep -q spec_pages
