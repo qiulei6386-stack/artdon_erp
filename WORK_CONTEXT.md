@@ -1,5 +1,16 @@
 # Artdon ERP 工作上下文
 
+## 2026-10-17：小程序 BOM 成本只读（P1）
+
+- 本次完成：微信小程序增加「BOM 成本」只读查看。首页宫格进入列表，可按型号、客户、成本单名称搜索，并按阶段（全部/草稿/预审/终审）和更新时间（全部/近7天/本月）筛选；详情是物料卡片，有 `bom.cost_view` 时底部汇总材料、人工、其它、总成本、建议报价和利润。金额与网站同一套 `bw_totals` / 列表缓存；没有成本权限时接口不返回单价、加工、表面、小计和汇总。供应商字段一期不返回。没有保存、审核、退审、改价、导入导出。
+- 鉴权：小程序原有 `X-Token`（`mapi_auth` 写入登录用户），权限用网站 `artdon_sso_can('bom', 'view'|'cost_view'|'supplier_view')`。无 `bom.view` 返回「当前账号没有 BOM 查看权限」。只新增 `bom_meta`、`bom_list`、`bom_detail`，不转发网站写接口。
+- 小程序页面原来不在本仓库（只有 `miniapp/api`）。页面放在 `wechat-miniprogram/`：`pages/home` 宫格、`pages/bom/list`、`pages/bom/detail`。登录、客户、拜访、派工页面仍不在这个目录里。
+- 修改文件：`includes/bom_miniapp_read.php`、`miniapp/api/index.php`、`wechat-miniprogram/**`、`tests/bom_miniapp_read_contract.php`、`tests/bom_miniapp_money.cjs`、`tools/ci_php_checks.sh`、`tools/ci_js_checks.sh`、本文件。未改 `bom.php`、`bom_api.php` 的写路径，未改推广中心和客户中心。
+- 检查结果：`php tests/bom_miniapp_read_contract.php` 通过（脱敏键与网站一致、列表缓存总成本、详情汇总与 `bw_totals` 一致、无成本权限响应里没有金额和供应商、停用单不可见、关键词不搜供应商、写动作没有入口）。`node tests/bom_miniapp_money.cjs` 通过。相关 PHP 与小程序脚本语法检查通过。未连正式库，没有用正式账号对照网站单据。
+- 服务器部署情况：本环境不能把分支检出到 `/www/wwwroot/Artdon/artdon_erp/`。正式目录只在本分支合并进 `main` 后由 GitHub Actions 快进。小程序体验版需要用仓库里的 `wechat-miniprogram` 另行上传，本环境没有微信开发者工具。
+- Git 提交号及推送状态：见本分支提交。正式目录未快进。
+- 尚未完成：合并后用有 `bom.cost_view` 的账号、以及只有 `bom.view` 的账号，打开网站同一张成本单对照列表和详情；确认抓包只有 `bom_meta` / `bom_list` / `bom_detail`。
+
 ## 2026-10-16：旧客户中心高级筛选 · 负责人两种匹配
 
 - 上一步：邮箱系统第一批（一），`centers/mail/`，提交 `13582a3`。本次只改旧版 `crm.php` 客户中心高级筛选，不改新客户中心。

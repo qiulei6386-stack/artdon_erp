@@ -1,0 +1,15 @@
+{
+  "miniprogramRoot": "./",
+  "projectname": "artdon-miniapp",
+  "description": "Artdon WeChat mini program",
+  "appid": "wxYOUR_APPID",
+  "compileType": "miniprogram",
+  "setting": {
+    "es6": true,
+    "enhance": true,
+    "postcss": true,
+    "minified": true,
+    "urlCheck": true
+  },
+  "libVersion": "3.5.5"
+}

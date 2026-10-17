@@ -1,0 +1,7 @@
+{
+  "navigationBarTitleText": "BOM 成本",
+  "enablePullDownRefresh": true,
+  "backgroundTextStyle": "dark",
+  "onReachBottomDistance": 80,
+  "usingComponents": {}
+}

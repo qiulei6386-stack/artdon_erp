@@ -55,6 +55,7 @@ contract_tests=(
   tests/bom_workflow_contract.php
   tests/quote_init_memory_contract.php
   tests/bom_dashboard_read_contract.php
+  tests/bom_miniapp_read_contract.php
   tests/bom_review_snapshot_contract.php
   tests/issues7_regression.php
   tests/quote_packing_tail_cartons_contract.php

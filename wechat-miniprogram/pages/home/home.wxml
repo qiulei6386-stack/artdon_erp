@@ -1,0 +1,9 @@
+<view class="page">
+  <view class="menu-grid">
+    <view class="menu-item card" hover-class="tap-card" hover-stay-time="80" bindtap="goBom">
+      <view class="menu-icon mi-purple">{{ui.home_icon_bom}}</view>
+      <view class="menu-title">{{ui.menu_bom}}</view>
+      <view class="menu-desc muted">{{ui.menu_bom_desc}}</view>
+    </view>
+  </view>
+</view>

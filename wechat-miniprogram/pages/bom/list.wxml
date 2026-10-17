@@ -1,0 +1,46 @@
+<view class="page">
+  <view class="state" wx:if="{{needLogin}}">
+    <view class="state-title">{{ui.need_login}}</view>
+  </view>
+
+  <view class="state" wx:elif="{{forbidden}}">
+    <view class="state-mark">BOM</view>
+    <view class="state-title">{{ui.forbidden_title}}</view>
+    <view class="muted state-desc">{{ui.forbidden_desc}}</view>
+  </view>
+
+  <block wx:else>
+    <view class="search-wrap card">
+      <input class="search" value="{{keyword}}" placeholder="{{ui.search_placeholder}}" confirm-type="search" bindinput="onSearch" />
+    </view>
+    <view class="chips">
+      <view class="chip {{stage === item.key ? 'on' : ''}}" wx:for="{{stages}}" wx:key="key" data-key="{{item.key}}" bindtap="setStage">{{item.label}}</view>
+    </view>
+    <view class="chips">
+      <view class="chip {{range === item.key ? 'on' : ''}}" wx:for="{{ranges}}" wx:key="key" data-key="{{item.key}}" bindtap="setRange">{{item.label}}</view>
+    </view>
+
+    <view class="state" wx:if="{{!loaded && !error}}">
+      <view class="muted">{{ui.loading}}</view>
+    </view>
+    <view class="state" wx:elif="{{loaded && !list.length && !error}}">
+      <view class="state-title">{{keyword ? ui.empty_search : ui.empty_list}}</view>
+    </view>
+    <view class="state" wx:elif="{{error && !list.length}}">
+      <view class="state-title">{{error}}</view>
+      <view class="retry" bindtap="retry">{{ui.retry}}</view>
+    </view>
+
+    <view class="card item" wx:for="{{list}}" wx:key="project_uid" data-id="{{item.project_uid}}" hover-class="tap-card" hover-stay-time="80" bindtap="openDetail">
+      <view class="row-top">
+        <view class="model">{{item.model || item.name}}</view>
+        <view class="badge">{{item.review_status_label}}</view>
+      </view>
+      <view class="name" wx:if="{{item.model && item.name}}">{{item.name}}</view>
+      <view class="muted meta">{{item.customer}}<text wx:if="{{item.product_type}}"> · {{item.product_type}}</text> · {{item.row_count}}{{ui.row_unit}} · {{item.updated_at}}</view>
+      <view class="amount" wx:if="{{can.cost_view && item.totalText}}">{{ui.total_label}} {{item.totalText}}</view>
+    </view>
+
+    <view class="foot muted" wx:if="{{list.length}}">{{hasMore ? ui.load_more : ui.no_more}}</view>
+  </block>
+</view>

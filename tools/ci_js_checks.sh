@@ -48,6 +48,7 @@ static_tests=(
   tests/bom_workflow.cjs
   tests/quote_init_memory.cjs
   tests/bom_dashboard_read.cjs
+  tests/bom_miniapp_money.cjs
   tests/crm_visit_result_reference.cjs
   tests/quote_money_runtime_test.cjs
   tests/crm_quote_handoff_runtime_test.cjs

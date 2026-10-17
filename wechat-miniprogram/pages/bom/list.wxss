@@ -1,0 +1,117 @@
+.page {
+  min-height: 100vh;
+  padding: 16rpx 20rpx 32rpx;
+  box-sizing: border-box;
+}
+
+.search-wrap {
+  padding: 8rpx 16rpx;
+}
+
+.search {
+  height: 64rpx;
+  font-size: 28rpx;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12rpx;
+  margin-top: 16rpx;
+}
+
+.chip {
+  padding: 8rpx 20rpx;
+  border-radius: 999rpx;
+  background: #fff;
+  color: #5c6370;
+  font-size: 24rpx;
+}
+
+.chip.on {
+  background: #4f46e5;
+  color: #fff;
+}
+
+.item {
+  margin-top: 16rpx;
+}
+
+.row-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12rpx;
+}
+
+.model {
+  flex: 1;
+  font-size: 30rpx;
+  font-weight: 600;
+}
+
+.name {
+  margin-top: 6rpx;
+  font-size: 26rpx;
+}
+
+.meta {
+  margin-top: 8rpx;
+}
+
+.badge {
+  flex-shrink: 0;
+  font-size: 22rpx;
+  color: #4f46e5;
+  background: #eef0ff;
+  padding: 2rpx 10rpx;
+  border-radius: 8rpx;
+}
+
+.amount {
+  margin-top: 10rpx;
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #4f46e5;
+}
+
+.state {
+  padding: 80rpx 24rpx;
+  text-align: center;
+}
+
+.state-mark {
+  width: 88rpx;
+  height: 88rpx;
+  margin: 0 auto 20rpx;
+  border-radius: 24rpx;
+  background: #6d5efc;
+  color: #fff;
+  font-size: 22rpx;
+  font-weight: 700;
+  line-height: 88rpx;
+}
+
+.state-title {
+  font-size: 30rpx;
+  font-weight: 600;
+}
+
+.state-desc {
+  margin-top: 12rpx;
+}
+
+.retry {
+  display: inline-block;
+  margin-top: 20rpx;
+  padding: 10rpx 28rpx;
+  border-radius: 999rpx;
+  background: #4f46e5;
+  color: #fff;
+  font-size: 26rpx;
+}
+
+.foot {
+  text-align: center;
+  padding: 24rpx 0 12rpx;
+}
