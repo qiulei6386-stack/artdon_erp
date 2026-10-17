@@ -1,0 +1,69 @@
+# 一次性：把选型系统测试版装到 novlight.com/spectest/（不碰正式选型网站，也不碰 artdon_erp）
+name: Install novlight spectest
+
+on:
+  push:
+    branches:
+      - novlight-spectest-deploy
+
+permissions:
+  contents: read
+
+jobs:
+  install:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Upload package
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_PORT: ${{ secrets.SERVER_PORT }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          umask 077
+          printf '%s\n' "$SERVER_SSH_KEY" | tr -d '\r' > "$RUNNER_TEMP/k"
+          echo "SSHOPT=-i $RUNNER_TEMP/k -o BatchMode=yes -o ConnectTimeout=15 -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=.github/known_hosts" >> "$GITHUB_ENV"
+          scp -i "$RUNNER_TEMP/k" -P "$SERVER_PORT" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=.github/known_hosts \
+            payload/novlight-tools-test.tar.gz payload/hunyuan.key "${SERVER_USER}@${SERVER_HOST}:/tmp/"
+
+      - name: Check server permissions
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_PORT: ${{ secrets.SERVER_PORT }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+        run: |
+          ssh $SSHOPT -p "$SERVER_PORT" "${SERVER_USER}@${SERVER_HOST}" 'bash -s' <<'REMOTE'
+          set -eu
+          id
+          for d in /www/wwwroot /www/wwwroot/Artdon /www/server/artdon_secrets; do ls -ld "$d"; [ -w "$d" ] && echo "可写 $d" || { echo "不可写 $d"; exit 1; }; done
+          [ -r /www/wwwroot/novlight-tools/data/app.sqlite ] && [ -r /www/wwwroot/novlight-tools/config.php ]
+          REMOTE
+
+      - name: Install spectest
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_PORT: ${{ secrets.SERVER_PORT }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+        run: |
+          ssh $SSHOPT -p "$SERVER_PORT" "${SERVER_USER}@${SERVER_HOST}" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          trap 'rm -f /tmp/hunyuan.key /tmp/novlight-tools-test.tar.gz' EXIT
+          cd /www/wwwroot
+          rm -rf novlight-tools-test.new && mkdir novlight-tools-test.new
+          tar xzf /tmp/novlight-tools-test.tar.gz -C novlight-tools-test.new --strip-components=1
+          # 保留上次测试的数据
+          if [ -d novlight-tools-test/data ]; then rm -rf novlight-tools-test.new/data; cp -a novlight-tools-test/data novlight-tools-test.new/data; fi
+          rm -rf novlight-tools-test && mv novlight-tools-test.new novlight-tools-test
+          cd novlight-tools-test
+          bash deploy/install_test.sh hunyuan "$(cat /tmp/hunyuan.key)"
+          REMOTE
+
+      - name: Verify spectest page
+        run: |
+          sleep 2
+          curl --fail --silent --show-error --max-time 30 https://novlight.com/spectest/index.php?r=login | grep -q '登录'
+          curl --fail --silent --show-error --max-time 30 -o /dev/null https://novlight.com/spectest/assets/css/app.css
+          curl --fail --silent --show-error --max-time 30 -o /dev/null https://novlight.com/index.php?r=login
