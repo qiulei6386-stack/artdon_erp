@@ -46,8 +46,7 @@ jobs:
           REMOTE
           ) || true
           echo "::notice title=server::$(printf '%s' "$out" | tr '\n' '|')"
-          printf '%s' "$out" | grep -q '/www/wwwroot/Artdon W' || exit 1
-          printf '%s' "$out" | grep -q '/www/wwwroot W' || exit 1
+          printf '%s' "$out" | grep -q 'SUDO=yes' || exit 1
 
       - name: Install spectest
         env:
@@ -55,18 +54,21 @@ jobs:
           SERVER_PORT: ${{ secrets.SERVER_PORT }}
           SERVER_USER: ${{ secrets.SERVER_USER }}
         run: |
-          ssh $SSHOPT -p "$SERVER_PORT" "${SERVER_USER}@${SERVER_HOST}" 'bash -s' <<'REMOTE'
+          out=$(ssh $SSHOPT -p "$SERVER_PORT" "${SERVER_USER}@${SERVER_HOST}" 'sudo -n bash -s' 2>&1 <<'REMOTE'
           set -euo pipefail
           trap 'rm -f /tmp/hunyuan.key /tmp/novlight-tools-test.tar.gz' EXIT
           cd /www/wwwroot
           rm -rf novlight-tools-test.new && mkdir novlight-tools-test.new
           tar xzf /tmp/novlight-tools-test.tar.gz -C novlight-tools-test.new --strip-components=1
-          # 保留上次测试的数据
-          if [ -d novlight-tools-test/data ]; then rm -rf novlight-tools-test.new/data; cp -a novlight-tools-test/data novlight-tools-test.new/data; fi
           rm -rf novlight-tools-test && mv novlight-tools-test.new novlight-tools-test
+          chown -R www:www novlight-tools-test
           cd novlight-tools-test
           bash deploy/install_test.sh hunyuan "$(cat /tmp/hunyuan.key)"
+          ls -la /www/wwwroot/Artdon/spectest /www/server/artdon_secrets/hunyuan.php | sed 's/^/  /'
           REMOTE
+          ) && rc=0 || rc=$?
+          echo "::notice title=install::$(printf '%s' "$out" | tail -40 | tr '\n' '|')"
+          exit $rc
 
       - name: Verify spectest page
         run: |
