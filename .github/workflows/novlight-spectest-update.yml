@@ -56,7 +56,7 @@ jobs:
           foreach (array_reverse($dirs) as $d) { $files = glob($d . '/p-*.jpg') ?: []; if ($files) break; }
           if (!$files) { echo "没有可测试的页面\n"; exit(0); }
           natsort($files);
-          foreach (['hy-vision-2.0-instruct', 'glm-5v-turbo'] as $model) {
+          foreach (['hy-vision-2.0-instruct'] as $model) {
               $cfg = $config; $cfg['spec']['model'] = $model;
               $t = microtime(true);
               try {
