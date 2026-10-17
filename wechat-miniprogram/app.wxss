@@ -1,0 +1,21 @@
+page {
+  background: #f4f5f7;
+  color: #1f2329;
+  font-size: 28rpx;
+  line-height: 1.45;
+}
+
+.muted {
+  color: #8b919a;
+  font-size: 24rpx;
+}
+
+.card {
+  background: #fff;
+  border-radius: 16rpx;
+  padding: 20rpx 22rpx;
+}
+
+.tap-card {
+  opacity: 0.82;
+}

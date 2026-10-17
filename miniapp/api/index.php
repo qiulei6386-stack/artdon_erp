@@ -1643,6 +1643,22 @@ function mapi_dup_check_payload(array $input): array {
     ];
 }
 
+function mx_erp_root(): string
+{
+    static $root = null;
+    if ($root !== null) {
+        return $root;
+    }
+    foreach ([__DIR__ . '/../../artdon_erp', __DIR__ . '/../..'] as $dir) {
+        if (is_file($dir . '/includes/bootstrap.php')) {
+            $root = $dir;
+            return $root;
+        }
+    }
+    $root = __DIR__ . '/../../artdon_erp';
+    return $root;
+}
+
 $action = trim((string)($_GET['action'] ?? ''));
 $input = mapi_input();
 
@@ -3481,6 +3497,8 @@ mapi_out(true, '', [
                 'visit_detail' => '查看拜访详情',
                 'logs' => '查看操作日志',
                 'dispatch' => '进入派工待办',
+                'bom_list' => '进入 BOM 成本',
+                'bom_detail' => '查看成本表',
             ];
             if (!isset($map[$page])) mapi_out(true, 'ignored');
             // Skip list floods already excluded; customers/visits list page enter is OK once.
@@ -3489,6 +3507,7 @@ mapi_out(true, '', [
             $ttype = '';
             if ($page === 'customer_detail' || $page === 'customer_create') $ttype = 'customer';
             if ($page === 'visit_detail' || $page === 'visit_edit') $ttype = 'visit';
+            if ($page === 'bom_list' || $page === 'bom_detail') $ttype = 'bom';
             if ($tname === '' && $ttype === 'customer' && $tid > 0) $tname = mx_audit_customer_name($tid);
             if ($tname === '' && $ttype === 'visit' && $tid > 0) $tname = mx_audit_visit_name($tid);
             // Dedup: same user+page+target within 20s
@@ -3807,6 +3826,24 @@ mapi_out(true, '', [
             } catch (Throwable $e) {
                 mapi_out(false, $e->getMessage() ?: '翻译失败');
             }
+            break;
+        }
+
+        case 'bom_meta':
+        case 'bom_list':
+        case 'bom_detail': {
+            mapi_auth($input);
+            $erpRoot = mx_erp_root();
+            require_once $erpRoot . '/includes/artdon_sso_core.php';
+            require_once $erpRoot . '/includes/bom_miniapp_read.php';
+            if (function_exists('artdon_bom_ensure_permissions')) {
+                artdon_bom_ensure_permissions();
+            }
+            $canView = function_exists('artdon_sso_can') && artdon_sso_can('bom', 'view');
+            $canCost = function_exists('artdon_sso_can') && artdon_sso_can('bom', 'cost_view');
+            $canSupplier = function_exists('artdon_sso_can') && artdon_sso_can('bom', 'supplier_view');
+            $result = bom_mp_handle(db(), $action, $input, $canView, $canCost, $canSupplier);
+            mapi_out(!empty($result['ok']), (string)($result['message'] ?? ''), $result['data'] ?? ['code' => 'BOM_FORBIDDEN']);
             break;
         }
 

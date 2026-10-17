@@ -1,0 +1,9 @@
+{
+  "desc": "Artdon mini program",
+  "rules": [
+    {
+      "action": "allow",
+      "page": "*"
+    }
+  ]
+}

@@ -1,0 +1,51 @@
+<view class="page {{can.cost_view && totals.length ? 'with-bar' : ''}}">
+  <view class="state" wx:if="{{needLogin}}">
+    <view class="state-title">{{ui.need_login}}</view>
+  </view>
+  <view class="state" wx:elif="{{forbidden}}">
+    <view class="state-mark">BOM</view>
+    <view class="state-title">{{ui.forbidden_title}}</view>
+    <view class="muted state-desc">{{ui.forbidden_desc}}</view>
+  </view>
+  <view class="state" wx:elif="{{error}}">
+    <view class="state-title">{{error}}</view>
+    <view class="retry" bindtap="retry">{{ui.retry}}</view>
+  </view>
+
+  <block wx:elif="{{project}}">
+    <view class="card head">
+      <view class="row-top">
+        <view class="model">{{project.model || project.name}}</view>
+        <view class="badge">{{project.review_status_label}}</view>
+      </view>
+      <view class="name" wx:if="{{project.model && project.name}}">{{project.name}}</view>
+      <view class="muted meta">{{project.customer}}<text wx:if="{{project.product_type}}"> · {{project.product_type}}</text></view>
+      <view class="muted meta">{{project.currency || 'RMB'}} · {{project.version_no}}<text wx:if="{{project.variant_label}}"> · {{project.variant_label}}</text> · {{project.updated_at}}</view>
+      <view class="note {{noteOpen ? 'open' : ''}}" wx:if="{{project.note}}" bindtap="toggleNote">{{project.note}}</view>
+    </view>
+
+    <view class="banner" wx:if="{{!can.cost_view}}">{{ui.no_cost}}</view>
+
+    <view class="card line" wx:for="{{rows}}" wx:key="no">
+      <view class="line-1">
+        <text class="no">{{item.no}}</text>
+        <text class="cat" wx:if="{{item.category}}">{{item.category}}</text>
+        <text class="line-name">{{item.name}}</text>
+      </view>
+      <view class="muted line-2">{{item.spec}}<text wx:if="{{item.qtyText}}"> · {{ui.qty_prefix}}{{item.qtyText}}</text></view>
+      <view class="line-3" wx:if="{{can.cost_view && item.costText}}">{{item.costText}}</view>
+    </view>
+  </block>
+
+  <view class="totals" wx:if="{{can.cost_view && totals.length}}">
+    <view class="cell" wx:for="{{totals}}" wx:key="key">
+      <view class="muted">{{item.label}}</view>
+      <view class="{{item.strong ? 'strong' : 'num'}}">{{item.text}}</view>
+    </view>
+    <view class="profit" bindtap="toggleProfit">
+      <text class="muted">{{ui.profit_label}}</text>
+      <text wx:if="{{profitOpen}}" class="num"> {{profitText}}</text>
+      <text wx:else class="muted"> · 展开</text>
+    </view>
+  </view>
+</view>
