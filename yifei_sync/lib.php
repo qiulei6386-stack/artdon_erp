@@ -335,9 +335,12 @@ function yf_decimal_in($value, string $field): string
     if ($value === '') {
         $value = '0';
     }
-    if (!preg_match('/^\d+(\.\d+)?$/', $value)) {
-        throw new InvalidArgumentException($field . ' 必须是非负数字');
+    // 易飞成本/用量可能为负（冲销、调整），接受任意有限数字；NaN/INF/非数字拒收。
+    if (!preg_match('/^([+-]?)(\d*)(?:\.(\d+))?$/', $value, $m) || ($m[2] === '' && ($m[3] ?? '') === '')) {
+        throw new InvalidArgumentException($field . ' 必须是数字');
     }
+    $sign = $m[1] === '-' ? '-' : '';
+    $value = ($m[2] === '' ? '0' : $m[2]) . (isset($m[3]) && $m[3] !== '' ? '.' . $m[3] : '');
     $parts = explode('.', $value, 2);
     if (strlen($parts[0]) > 12) {
         throw new InvalidArgumentException($field . ' 整数位过长');
@@ -346,7 +349,9 @@ function yf_decimal_in($value, string $field): string
     if (strlen($frac) > 6) {
         throw new InvalidArgumentException($field . ' 最多 6 位小数');
     }
-    return $parts[0] . '.' . str_pad($frac, 6, '0');
+    $int = ltrim($parts[0], '0');
+    $out = ($int === '' ? '0' : $int) . '.' . str_pad($frac, 6, '0');
+    return ($sign === '-' && $out !== '0.000000') ? '-' . $out : $out;
 }
 
 function yf_format_decimal($value): string
