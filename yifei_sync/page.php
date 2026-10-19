@@ -1,6 +1,30 @@
 <?php
 declare(strict_types=1);
 
+function yf_money($value): string
+{
+    if ($value === null || $value === '') {
+        return '—';
+    }
+    return yf_format_decimal($value);
+}
+
+function yf_attr_label($value): string
+{
+    $attr = strtoupper(trim((string)$value));
+    $map = array(
+        'P' => 'P 采购',
+        'M' => 'M 自制',
+        'S' => 'S 委外',
+        'Y' => 'Y 虚设',
+        'C' => 'C 配置',
+    );
+    if ($attr === '') {
+        return '—';
+    }
+    return $map[$attr] ?? $attr;
+}
+
 function yf_row_synced_at(array $row): string
 {
     $times = array();
@@ -41,7 +65,7 @@ function yf_render_page(array $model): string
 body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",Arial,sans-serif;font-size:14px}
 a{color:var(--main);text-decoration:none}
 header{background:#fff;border-bottom:1px solid var(--line)}
-.wrap{width:min(1100px,calc(100% - 32px));margin:0 auto;padding:16px 0 40px}
+.wrap{width:min(1280px,calc(100% - 32px));margin:0 auto;padding:16px 0 40px}
 .top{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap;padding:14px 0}
 h1{font-size:22px;margin:0}
 .sub{color:var(--muted);margin-top:4px}
@@ -87,7 +111,7 @@ h2{font-size:16px;margin:0 0 8px}
   </div>
 </div></header>
 <main class="wrap">
-  <div class="banner">数据由本地易飞（业务库 AT）只读推送。本页没有回写按钮，也不会改易飞里的任何资料。成本只显示每个品号最新期间的 CSTMB.MB005。</div>
+  <div class="banner">数据由本地易飞（业务库 AT）只读推送。本页没有回写按钮，也不会改易飞里的任何资料。账上最新单位成本是每个品号最新期间的 CSTMB.MB005。材料合计按单阶 BOM：单位标准材料成本 × 组成用量 / 底数 × (1+损耗率)。最近进价不参与材料合计。</div>
   <section class="card">
     <form method="get" action="">
       <input id="q" type="search" name="q" value="<?= yf_h($q) ?>" placeholder="品号或品名，例如 A4-2-01-4286" maxlength="80" autofocus>
@@ -114,7 +138,7 @@ h2{font-size:16px;margin:0 0 8px}
         <table>
           <thead><tr>
             <th>品号</th><th>品名</th><th>规格</th>
-            <?php if ($canCost): ?><th class="num">最新成本</th><th>成本期间</th><?php endif; ?>
+            <?php if ($canCost): ?><th class="num">账上最新单位成本(CSTMB)</th><th class="num">单位标准材料成本</th><th>成本期间</th><?php endif; ?>
             <th>同步时间</th>
           </tr></thead>
           <tbody>
@@ -125,7 +149,8 @@ h2{font-size:16px;margin:0 0 8px}
               <td><?= yf_h($row['item_name'] !== '' ? $row['item_name'] : '—') ?></td>
               <td><?= yf_h($row['spec'] !== '' ? $row['spec'] : '—') ?></td>
               <?php if ($canCost): ?>
-                <td class="num cost"><?= $row['cost'] === null || $row['cost'] === '' ? '—' : yf_h(yf_format_decimal($row['cost'])) ?></td>
+                <td class="num cost"><?= yf_h(yf_money($row['cost'] ?? null)) ?></td>
+                <td class="num"><?= yf_h(yf_money($row['std_material'] ?? null)) ?></td>
                 <td><?= yf_h($row['period'] !== null && $row['period'] !== '' ? $row['period'] : '—') ?></td>
               <?php endif; ?>
               <td><?= yf_h(yf_row_synced_at($row) ?: '—') ?></td>
@@ -150,6 +175,13 @@ function yf_render_detail(array $detail, bool $canCost): string
     $cost = $detail['cost'] ?? null;
     $name = is_array($item) ? (string)$item['item_name'] : '';
     $spec = is_array($item) ? (string)$item['spec'] : '';
+    $rollup = $detail['rollup'] ?? array('material_total' => '0', 'missing_std' => 0, 'zero_std' => 0, 'phantom' => 0);
+    $stdTotal = $detail['std_total'] ?? array('total' => null, 'present' => array(), 'absent' => array());
+    $parentStd = is_array($item) ? ($item['std_material'] ?? null) : null;
+    $gap = false;
+    if ($canCost && $parentStd !== null && $parentStd !== '' && !empty($detail['children'])) {
+        $gap = yf_decimal_cmp(yf_decimal_in((string)$parentStd, '单位标准材料成本'), yf_decimal_in((string)$rollup['material_total'], '材料合计')) !== 0;
+    }
     ob_start();
     ?>
     <section class="card">
@@ -157,10 +189,15 @@ function yf_render_detail(array $detail, bool $canCost): string
       <div class="kv">
         <div><span>品名</span><b><?= yf_h($name !== '' ? $name : '主档尚未同步') ?></b></div>
         <div><span>规格</span><b><?= yf_h($spec !== '' ? $spec : '—') ?></b></div>
+        <div><span>品号属性</span><b><?= yf_h(yf_attr_label(is_array($item) ? ($item['item_attr'] ?? '') : '')) ?></b></div>
         <?php if ($canCost): ?>
-          <div><span>最新成本（MB005）</span><b class="cost"><?= is_array($cost) ? yf_h(yf_format_decimal($cost['cost'])) : '—' ?></b></div>
+          <div><span>账上最新单位成本(CSTMB)</span><b class="cost"><?= is_array($cost) ? yf_h(yf_format_decimal($cost['cost'])) : '—' ?></b></div>
           <div><span>成本期间（MB002）</span><b><?= is_array($cost) && $cost['period'] !== '' ? yf_h($cost['period']) : '—' ?></b></div>
           <div><span>单据号（MB004，不是品号）</span><b><?= is_array($cost) && $cost['doc_no'] !== '' ? yf_h($cost['doc_no']) : '—' ?></b></div>
+          <div><span>单位标准材料成本</span><b class="cost"><?= yf_h(yf_money($parentStd)) ?></b></div>
+          <div><span>标准成本合计</span><b><?= yf_h(yf_money($stdTotal['total'] ?? null)) ?></b><?php if (!empty($stdTotal['absent'])): ?><span>未同步：<?= yf_h(implode('、', $stdTotal['absent'])) ?></span><?php endif; ?></div>
+          <div><span>最近进价（不参与材料合计）</span><b><?= yf_h(yf_money(is_array($item) ? ($item['latest_purchase'] ?? null) : null)) ?></b></div>
+          <div><span>工时底数</span><b><?= yf_h(yf_money(is_array($item) ? ($item['hour_base'] ?? null) : null)) ?></b></div>
         <?php endif; ?>
         <div><span>最后同步时间</span><b><?= yf_h($detail['synced_at'] !== '' ? $detail['synced_at'] : '—') ?></b></div>
       </div>
@@ -171,8 +208,19 @@ function yf_render_detail(array $detail, bool $canCost): string
         <div class="table-wrap">
         <table>
           <thead><tr>
-            <th>元件品号</th><th>品名</th><th>规格</th><th class="num">用量</th>
-            <?php if ($canCost): ?><th class="num">元件最新成本</th><?php endif; ?>
+            <th>元件品号</th><th>品名</th><th>规格</th><th>属性</th>
+            <th class="num">组成用量</th><th class="num">底数</th><th class="num">损耗率</th>
+            <?php if ($canCost): ?>
+              <th class="num">账上最新单位成本</th>
+              <th class="num">单位标准材料成本</th>
+              <th class="num">材料成本</th>
+              <th class="num">单位标准人工</th>
+              <th class="num">单位标准制费</th>
+              <th class="num">单位标准加工</th>
+              <th class="num">本阶人工</th>
+              <th class="num">本阶制费</th>
+              <th class="num">本阶加工</th>
+            <?php endif; ?>
           </tr></thead>
           <tbody>
           <?php foreach ($detail['children'] as $child): ?>
@@ -180,13 +228,40 @@ function yf_render_detail(array $detail, bool $canCost): string
               <td class="code"><a href="?q=<?= yf_h(rawurlencode((string)$child['component_code'])) ?>&amp;code=<?= yf_h(rawurlencode((string)$child['component_code'])) ?>"><?= yf_h($child['component_code']) ?></a></td>
               <td><?= yf_h($child['item_name'] !== '' ? $child['item_name'] : '—') ?></td>
               <td><?= yf_h($child['spec'] !== '' ? $child['spec'] : '—') ?></td>
+              <td><?= yf_h(yf_attr_label($child['item_attr'] ?? '')) ?></td>
               <td class="num"><?= yf_h(yf_format_decimal($child['qty'])) ?></td>
-              <?php if ($canCost): ?><td class="num cost"><?= $child['cost'] === null || $child['cost'] === '' ? '—' : yf_h(yf_format_decimal($child['cost'])) ?></td><?php endif; ?>
+              <td class="num"><?= yf_h(yf_format_decimal($child['base_qty'] ?? '1')) ?></td>
+              <td class="num"><?= yf_h(yf_format_decimal($child['scrap_rate'] ?? '0')) ?></td>
+              <?php if ($canCost): ?>
+                <td class="num cost"><?= yf_h(yf_money($child['cost'] ?? null)) ?></td>
+                <td class="num"><?= !empty($child['std_missing']) ? '—' : yf_h(yf_money($child['std_material'] ?? null)) ?></td>
+                <td class="num cost"><?= yf_h(yf_money($child['material_cost'] ?? null)) ?></td>
+                <td class="num"><?= yf_h(yf_money($child['std_labor'] ?? null)) ?></td>
+                <td class="num"><?= yf_h(yf_money($child['std_mfg'] ?? null)) ?></td>
+                <td class="num"><?= yf_h(yf_money($child['std_subcontract'] ?? null)) ?></td>
+                <td class="num"><?= yf_h(yf_money($child['level_labor'] ?? null)) ?></td>
+                <td class="num"><?= yf_h(yf_money($child['level_mfg'] ?? null)) ?></td>
+                <td class="num"><?= yf_h(yf_money($child['level_process'] ?? null)) ?></td>
+              <?php endif; ?>
             </tr>
           <?php endforeach; ?>
           </tbody>
+          <?php if ($canCost): ?>
+          <tfoot>
+            <tr>
+              <td colspan="9">材料合计</td>
+              <td class="num cost"><?= yf_h(yf_format_decimal($rollup['material_total'])) ?></td>
+              <td colspan="6">缺标准材料成本 <?= (int)$rollup['missing_std'] ?> 个<?php if ((int)$rollup['zero_std'] > 0): ?>；标准材料成本为 0 的 <?= (int)$rollup['zero_std'] ?> 个计入合计<?php endif; ?></td>
+            </tr>
+          </tfoot>
+          <?php endif; ?>
         </table>
         </div>
+        <?php if ($canCost): ?>
+          <p class="empty">材料成本 = 单位标准材料成本 × 组成用量 / 底数 × (1+损耗率)。底数为空或 0 按 1，损耗为空按 0。损耗率 0.25 表示 25%。这是单阶，不展开虚设件和下阶。最近进价不参与材料合计。</p>
+          <?php if ($gap): ?><p class="notice">单阶材料合计与主件单位标准材料成本不一致。易飞计算标准成本后，主件上的单位标准材料成本通常已含下阶；多阶、虚设件或报表改用最近进价时，两边会不同。</p><?php endif; ?>
+        <?php endif; ?>
+        <?php if ((int)$rollup['phantom'] > 0): ?><p class="notice">本阶含虚设件。易飞标准成本报表会展开虚设件，这里只按直接子件计算。</p><?php endif; ?>
       <?php endif; ?>
       <?php if (!empty($detail['parents'])): ?>
         <h2 style="margin-top:16px">作为元件被用于</h2>

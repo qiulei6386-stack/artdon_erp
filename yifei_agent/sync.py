@@ -22,6 +22,26 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 IDENT = re.compile(r"^[A-Z][A-Z0-9_]{0,30}$")
 
+# 品号会计页。证据见 yifei_agent/README.md。
+# confirmed：公开 SQL 注释或触发器写明了中文含义。
+# inferred：夹在已核实栏位之间，对应画面上相邻的制费/加工；库里没有该列时跳过，不让整次品号同步失败。
+INVMB_EXTRA = (
+    ("MB025", "item_attr", "char", "confirmed"),
+    ("MB050", "latest_purchase", "num", "confirmed"),
+    ("MB057", "std_material", "num", "confirmed"),
+    ("MB058", "std_labor", "num", "confirmed"),
+    ("MB059", "std_mfg", "num", "inferred"),
+    ("MB060", "std_subcontract", "num", "inferred"),
+    ("MB061", "level_labor", "num", "confirmed"),
+    ("MB062", "level_mfg", "num", "confirmed"),
+    ("MB063", "level_process", "num", "inferred"),
+    ("MB096", "hour_base", "num", "confirmed"),
+)
+BOMMD_EXTRA = (
+    ("MD007", "base_qty", "num", "confirmed"),
+    ("MD008", "scrap_rate", "num", "confirmed"),
+)
+
 
 def assert_ident(name: str) -> str:
     if not IDENT.fullmatch(name or ""):
@@ -54,20 +74,41 @@ def assert_read_only(sql: str) -> None:
         raise RuntimeError("拒绝执行非只读语句")
 
 
-def invmb_sql(date_columns=None, watermark: str = ""):
-    """INVMB.MB001 品号，MB002 品名，MB003 规格。"""
+def extra_fields(spec, present=None):
+    """present 为 None 时列出全部；为集合时只留库里真实存在的列。"""
+    fields = []
+    skipped = []
+    for column, alias, kind, _evidence in spec:
+        assert_ident(column)
+        if present is not None and column not in present:
+            skipped.append(column)
+            continue
+        if kind == "char":
+            fields.append("RTRIM(ISNULL(%s, '')) AS %s" % (column, alias))
+        else:
+            fields.append("%s AS %s" % (column, alias))
+    return fields, skipped
+
+
+def invmb_sql(date_columns=None, watermark: str = "", present=None):
+    """INVMB.MB001 品号，MB002 品名，MB003 规格，以及会计页标准成本。"""
     date_columns = list(date_columns or [])
     fields = [
         "RTRIM(MB001) AS item_code",
         "RTRIM(ISNULL(MB002, '')) AS item_name",
         "RTRIM(ISNULL(MB003, '')) AS spec",
     ]
+    extra, skipped = extra_fields(INVMB_EXTRA, present)
+    fields.extend(extra)
     params = []
     for col in date_columns:
         assert_ident(col)
         fields.append("RTRIM(ISNULL(%s, '')) AS wm_%s" % (col, col))
     sql = (
-        "-- INVMB.MB001 品号，MB002 品名，MB003 规格。char 列一律 RTRIM。\n"
+        "-- INVMB.MB001 品号，MB002 品名，MB003 规格。\n"
+        "-- MB057 单位标准材料成本，MB058 单位标准人工成本，MB061 本阶人工，MB062 本阶制费，MB096 工时底数。\n"
+        "-- MB059/MB060/MB063 是制费、加工的相邻栏位；列不存在时运行期会跳过。\n"
+        "-- MB050 最近进价，只作对照，不参与材料合计。char 列一律 RTRIM。\n"
         "SELECT\n    " + ",\n    ".join(fields) + "\n"
         "FROM INVMB\n"
         "WHERE RTRIM(ISNULL(MB001, '')) <> ''"
@@ -79,23 +120,25 @@ def invmb_sql(date_columns=None, watermark: str = ""):
             parts.append("RTRIM(ISNULL(%s, '')) > ?" % col)
             params.append(watermark)
         sql += "\n  AND (" + " OR ".join(parts) + ")"
-    return sql, params
+    return sql, params, skipped
 
 
-def bommd_sql(date_columns=None, watermark: str = ""):
-    """BOMMD.MD001 主件，MD003 元件，MD006 用量。"""
+def bommd_sql(date_columns=None, watermark: str = "", present=None):
+    """BOMMD.MD001 主件，MD003 元件，MD006 组成用量，MD007 底数，MD008 损耗率。"""
     date_columns = list(date_columns or [])
     fields = [
         "RTRIM(MD001) AS parent_code",
         "RTRIM(MD003) AS component_code",
         "MD006 AS qty",
     ]
+    extra, skipped = extra_fields(BOMMD_EXTRA, present)
+    fields.extend(extra)
     params = []
     for col in date_columns:
         assert_ident(col)
         fields.append("RTRIM(ISNULL(%s, '')) AS wm_%s" % (col, col))
     sql = (
-        "-- BOMMD.MD001 主件，MD003 元件，MD006 用量。char 列一律 RTRIM。\n"
+        "-- BOMMD.MD001 主件，MD003 元件，MD006 组成用量，MD007 底数，MD008 损耗率。char 列一律 RTRIM。\n"
         "SELECT\n    " + ",\n    ".join(fields) + "\n"
         "FROM BOMMD\n"
         "WHERE RTRIM(ISNULL(MD001, '')) <> ''\n"
@@ -108,7 +151,7 @@ def bommd_sql(date_columns=None, watermark: str = ""):
             parts.append("RTRIM(ISNULL(%s, '')) > ?" % col)
             params.append(watermark)
         sql += "\n  AND (" + " OR ".join(parts) + ")"
-    return sql, params
+    return sql, params, skipped
 
 
 def cstmb_sql():
@@ -162,10 +205,41 @@ def as_number(value):
     return str(value).strip()
 
 
+def optional_number(value):
+    """可选金额。SQL NULL 保持 JSON null；有值时最多 6 位小数，避免广州拒收。"""
+    if value is None:
+        return None
+    text = as_number(value).strip()
+    if text == "":
+        return None
+    rendered = format(Decimal(text).quantize(Decimal("0.000001")), "f")
+    if "." in rendered:
+        rendered = rendered.rstrip("0").rstrip(".")
+    return rendered or "0"
+
+
+def copy_spec_fields(out, row, spec, null_defaults=None):
+    """源行没有的键不输出，避免旧批次把已同步的标准成本覆盖成空。"""
+    null_defaults = null_defaults or {}
+    for _column, alias, kind, _evidence in spec:
+        if alias not in row:
+            continue
+        if kind == "char":
+            out[alias] = rtrim_text(row.get(alias))
+            continue
+        raw = row.get(alias)
+        if raw is None and alias in null_defaults:
+            out[alias] = null_defaults[alias]
+        else:
+            out[alias] = optional_number(raw)
+    return out
+
+
 def collapse_bom(rows):
-    """同一请求里相同主件+元件只留一行，用量相加。"""
+    """同一请求里相同主件+元件只留一行，用量相加。底数和损耗率留第一行。"""
     ordered = []
     acc = {}
+    extras = {}
     for row in rows:
         parent = rtrim_text(row.get("parent_code"))
         component = rtrim_text(row.get("component_code"))
@@ -174,30 +248,35 @@ def collapse_bom(rows):
         if key not in acc:
             ordered.append(key)
             acc[key] = Decimal("0")
+            extras[key] = copy_spec_fields({}, row, BOMMD_EXTRA, {"base_qty": "1", "scrap_rate": "0"})
         acc[key] += Decimal(qty or "0")
     out = []
     for key in ordered:
-        out.append({
+        item = {
             "parent_code": key[0],
             "component_code": key[1],
             "qty": format(acc[key], "f"),
-        })
+        }
+        item.update(extras[key])
+        out.append(item)
     return out
 
 
 def public_row(kind: str, row: dict) -> dict:
     if kind == "invmb":
-        return {
+        out = {
             "item_code": rtrim_text(row.get("item_code")),
             "item_name": rtrim_text(row.get("item_name")),
             "spec": rtrim_text(row.get("spec")),
         }
+        return copy_spec_fields(out, row, INVMB_EXTRA)
     if kind == "bommd":
-        return {
+        out = {
             "parent_code": rtrim_text(row.get("parent_code")),
             "component_code": rtrim_text(row.get("component_code")),
             "qty": as_number(row.get("qty")),
         }
+        return copy_spec_fields(out, row, BOMMD_EXTRA, {"base_qty": "1", "scrap_rate": "0"})
     return {
         "item_code": rtrim_text(row.get("item_code")),
         "period": rtrim_text(row.get("period")),
@@ -340,6 +419,29 @@ def fetch_all(conn, sql: str, params=()):
     return rows
 
 
+def present_columns(conn, table: str):
+    """返回该表实际列名。读不到或为空时返回 None，调用方改查全部候选列。"""
+    sql = (
+        "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS "
+        "WHERE TABLE_NAME = ? AND TABLE_SCHEMA = SCHEMA_NAME()"
+    )
+    try:
+        rows = fetch_all(conn, sql, (table,))
+    except Exception:
+        logging.warning("无法读取 %s 字段清单，按全部字段查询", table)
+        return None
+    names = set()
+    for row in rows:
+        for value in row.values():
+            text = str(value or "").strip().upper()
+            if text:
+                names.add(text)
+    if not names:
+        logging.warning("%s 字段清单为空，按全部字段查询", table)
+        return None
+    return names
+
+
 def post_json(url: str, token: str, payload: dict, timeout: int, verify: bool):
     data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     request = urllib.request.Request(url, data=data, method="POST")
@@ -426,18 +528,30 @@ def sync_database(cfg: dict, full: bool) -> None:
     try:
         stamp = time.strftime("%Y%m%d%H%M%S")
         plan = (
-            ("invmb", invmb_sql, False),
-            ("bommd", bommd_sql, False),
-            ("cstmb", cstmb_sql, True),
+            ("invmb", "INVMB", invmb_sql, False),
+            ("bommd", "BOMMD", bommd_sql, False),
+            ("cstmb", "", cstmb_sql, True),
         )
-        for kind, builder, always_full in plan:
+        for kind, table, builder, always_full in plan:
+            present = None
+            if table:
+                present = present_columns(conn, table)
+                if present is None:
+                    logging.warning("%s 未能确认字段清单，按全部候选列查询", kind)
             if always_full:
-                sql, params = builder()
+                built = builder()
                 used_columns = []
             else:
                 watermark = "" if full else str(state.get(kind) or "")
-                sql, params = builder(columns, watermark)
+                built = builder(columns, watermark, present)
                 used_columns = columns
+            if len(built) == 3:
+                sql, params, skipped = built
+            else:
+                sql, params = built
+                skipped = []
+            if skipped:
+                logging.warning("%s 跳过库里没有的列：%s", kind, ", ".join(skipped))
             logging.info("读取 %s", kind)
             rows = fetch_all(conn, sql, params)
             watermark_next = max_watermark(rows, used_columns) if used_columns else ""
@@ -495,6 +609,15 @@ def self_check() -> int:
         "RTRIM(ISNULL(MB004, ''))",
         "MB005",
         "ROW_NUMBER()",
+        "MB025",
+        "MB050",
+        "MB057",
+        "MB058",
+        "MB061",
+        "MB062",
+        "MB096",
+        "MD007",
+        "MD008",
     ]
     missing = [item for item in required if item not in blob]
     for name in ("CSTLA", "CSTMC"):
@@ -521,6 +644,39 @@ def self_check() -> int:
         return 1
     if folded[0]["parent_code"] != "A":
         print("RTRIM 语义失败")
+        return 1
+    if "base_qty" in folded[0] or "scrap_rate" in folded[0]:
+        print("旧 BOM 行不应带出底数")
+        return 1
+    rich = collapse_bom([
+        {"parent_code": "A ", "component_code": "B ", "qty": 1, "base_qty": None, "scrap_rate": "0.25"},
+        {"parent_code": "A", "component_code": "B", "qty": 2, "base_qty": 9, "scrap_rate": 0},
+    ])
+    if len(rich) != 1 or Decimal(rich[0]["qty"]) != Decimal("3"):
+        print("带底数的 BOM 合并失败")
+        return 1
+    if rich[0].get("base_qty") != "1" or rich[0].get("scrap_rate") != "0.25":
+        print("底数空值应按 1，损耗率应保留第一行")
+        return 1
+    shown = public_row("invmb", {
+        "item_code": "A5-2-06-0029",
+        "item_name": "驱动",
+        "spec": "",
+        "item_attr": "P ",
+        "std_material": Decimal("74"),
+        "std_labor": None,
+    })
+    if shown.get("std_material") != "74" or "std_mfg" in shown or shown.get("item_attr") != "P" or shown.get("std_labor") is not None:
+        print("品号标准成本输出不正确")
+        return 1
+    bare = public_row("invmb", {"item_code": "A", "item_name": "", "spec": ""})
+    if "std_material" in bare or "latest_purchase" in bare:
+        print("缺字段不应输出标准成本")
+        return 1
+    narrowed, _params, skipped = invmb_sql(present={"MB001"})
+    narrowed_sql = "\n".join(line for line in narrowed.splitlines() if not line.strip().startswith("--"))
+    if "std_material" in narrowed_sql or "MB057" not in skipped:
+        print("缺列时应跳过 MB057")
         return 1
     print("self-check ok")
     return 0

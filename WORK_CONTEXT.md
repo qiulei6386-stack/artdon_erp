@@ -1,5 +1,14 @@
 # Artdon ERP 工作上下文
 
+## 2026-10-19：易飞标准材料成本与单阶材料合计
+
+- 本次完成：易飞只读同步增加品号会计页标准成本，BOM 详情在保留 CSTMB 账上最新单位成本的同时，按单阶计算材料合计。材料合计 = 元件单位标准材料成本 × 组成用量 / 底数 × (1+损耗率)。底数空或 0 按 1，损耗空按 0。最近进价只保存对照，不进合计。标准进价列名未核实，不同步。MB059/MB060/MB063 按相邻栏位推断，代理发现列不存在会跳过，不让整次品号同步失败。旧批次没有这些键时不覆盖已有标准成本。
+- 修改文件：`yifei_agent/sync.py`、`yifei_agent/README.md`、`yifei_sync/lib.php`、`yifei_sync/page.php`、`yifei_sync/migrate.php`、`yifei_sync/README.md`、`tests/yifei_sync_contract.php`、本文件。
+- 检查结果：`php -l` 通过。`python3 yifei_agent/sync.py --self-check` 通过。`php tests/yifei_sync_contract.php` 通过。样例成品 A1-1-01-0381 的账上成本 6.229167、主件单位标准材料成本 171.9508 与单阶材料合计 126.3 同时出现；缺标准材料成本 1 个。126.3 是合成单阶数据，不是易飞报表实数。没有 `bom.cost_view` 时不输出这些金额。
+- 服务器部署情况：按本次要求不部署，也没有把分支同步到 `/www/wwwroot/Artdon/artdon_erp/`。合并进 `main` 之后由既有 GitHub Actions 快进。快进后在正式目录执行 `php yifei_sync/migrate.php`（补列，不清数据），再在 Windows 上执行 `py -3.13 sync.py --once`。
+- Git 提交号及推送状态：本提交，分支 `cursor/yifei-std-material-rollup-0a42`。正式目录未快进。
+- 尚未完成：现场重跑同步后，用 A1-1-01-0381 对比页头 MB057 与表尾单阶材料合计是否接近 171.9508。若单阶仍有差距，原因可能是多阶 BOM、虚设件未展开、底数/损耗未重推，或报表改用最近进价。本阶段不展开多阶。
+
 ## 2026-10-19：易飞查询页登录跳转修复
 
 - 本次完成：未登录打开 `yifei_sync/index.php` 时，登录地址改为站点根目录的 `login.php`（由脚本路径向上两级算出，例如 `/artdon_erp/login.php`），并用 `redirect` 带回原来的易飞查询页。不再跳到不存在的 `yifei_sync/login.php`。其他模块的相对 `login.php` 没有改。

@@ -143,6 +143,117 @@ $hidden = yf_render_page(array(
     'recent' => false,
 ));
 yf_check(strpos($hidden, '27.564722') === false && strpos($hidden, 'bom.cost_view') !== false && strpos($hidden, 'A4-2-01-0967') !== false, '没有成本权限时不输出成本数字');
+yf_check(strpos($schema, 'MB057') !== false && strpos($schema, 'MD007') !== false && strpos($schema, 'MD008') !== false, '建表脚本包含标准材料成本、底数和损耗率');
+yf_check(strpos($agentReadme, 'py -3.13 sync.py --once') !== false && strpos($agentReadme, 'MB057') !== false, '代理说明要求重跑同步并写了 MB057');
+yf_check(strpos($syncReadme, '171.9508') !== false && strpos($syncReadme, 'A1-1-01-0381') !== false, '广州说明写了成品核对目标');
+
+$baseZero = yf_line_material(array('qty' => '4', 'base_qty' => '0', 'scrap_rate' => '0', 'std_material' => '2'));
+yf_check(yf_format_decimal($baseZero['material_cost']) === '8', '底数 0 按 1 计算材料成本');
+$scrapLine = yf_line_material(array('qty' => '1', 'base_qty' => '2', 'scrap_rate' => '0.5', 'std_material' => '10'));
+yf_check(yf_format_decimal($scrapLine['material_cost']) === '7.5', '用量/底数×(1+损耗率) 后再乘标准材料成本');
+
+yf_apply($sqlite, yf_normalize_payload(array(
+    'type' => 'invmb',
+    'batch_id' => 't-std-parent',
+    'rows' => array(
+        array('item_code' => 'A1-1-01-0381', 'item_name' => '成品灯', 'spec' => '样例', 'item_attr' => 'M', 'std_material' => '171.950800', 'std_labor' => '1', 'std_subcontract' => '0.5', 'latest_purchase' => '63.717', 'hour_base' => '1'),
+        array('item_code' => 'A5-2-06-0029', 'item_name' => '驱动', 'spec' => '黑色', 'item_attr' => 'P', 'std_material' => '74'),
+        array('item_code' => 'A4-2-01-0235', 'item_name' => '元件', 'spec' => '', 'item_attr' => 'P', 'std_material' => '22.4'),
+        array('item_code' => 'COMP-BASE', 'item_name' => '有底数', 'spec' => '', 'std_material' => '10'),
+        array('item_code' => 'COMP-ZERO', 'item_name' => '零成本', 'spec' => '', 'std_material' => '0'),
+        array('item_code' => 'COMP-MISS', 'item_name' => '虚设', 'spec' => '', 'item_attr' => 'Y'),
+    ),
+)), '127.0.0.1');
+yf_apply($sqlite, yf_normalize_payload(array(
+    'type' => 'bommd',
+    'batch_id' => 't-std-bom',
+    'rows' => array(
+        array('parent_code' => 'A1-1-01-0381', 'component_code' => 'A5-2-06-0029', 'qty' => '1', 'base_qty' => '1', 'scrap_rate' => '0'),
+        array('parent_code' => 'A1-1-01-0381', 'component_code' => 'A4-2-01-0235', 'qty' => '2', 'base_qty' => '1', 'scrap_rate' => '0'),
+        array('parent_code' => 'A1-1-01-0381', 'component_code' => 'COMP-BASE', 'qty' => '1', 'base_qty' => '2', 'scrap_rate' => '0.5'),
+        array('parent_code' => 'A1-1-01-0381', 'component_code' => 'COMP-ZERO', 'qty' => '3', 'base_qty' => '1', 'scrap_rate' => '0'),
+        array('parent_code' => 'A1-1-01-0381', 'component_code' => 'COMP-MISS', 'qty' => '1', 'base_qty' => null, 'scrap_rate' => null),
+    ),
+)), '127.0.0.1');
+yf_apply($sqlite, yf_normalize_payload(array(
+    'type' => 'cstmb',
+    'batch_id' => 't-std-ledger',
+    'rows' => array(array('item_code' => 'A1-1-01-0381', 'period' => '20260909', 'doc_no' => 'LEDGER', 'cost' => '6.229167')),
+)), '127.0.0.1');
+$keptStd = yf_apply($sqlite, yf_normalize_payload(array(
+    'type' => 'invmb',
+    'batch_id' => 't-std-old-shape',
+    'rows' => array(array('item_code' => 'A5-2-06-0029', 'item_name' => '驱动-改名', 'spec' => '黑色')),
+)), '127.0.0.1');
+$driverRow = $sqlite->query("SELECT item_name, std_material FROM yf_invmb WHERE item_code = 'A5-2-06-0029'")->fetch(PDO::FETCH_ASSOC);
+yf_check($keptStd['upserted'] === 1 && $driverRow['item_name'] === '驱动-改名' && yf_format_decimal($driverRow['std_material']) === '74', '旧品号批次不覆盖已有单位标准材料成本');
+$cleared = yf_apply($sqlite, yf_normalize_payload(array(
+    'type' => 'invmb',
+    'batch_id' => 't-std-null',
+    'rows' => array(array('item_code' => 'COMP-ZERO', 'item_name' => '零成本', 'spec' => '', 'std_material' => null)),
+)), '127.0.0.1');
+$zeroAfter = $sqlite->query("SELECT std_material FROM yf_invmb WHERE item_code = 'COMP-ZERO'")->fetchColumn();
+yf_check($cleared['ok'] === true && $zeroAfter === null, '显式 null 才把标准材料成本写成空');
+yf_apply($sqlite, yf_normalize_payload(array(
+    'type' => 'invmb',
+    'batch_id' => 't-std-zero-back',
+    'rows' => array(array('item_code' => 'COMP-ZERO', 'item_name' => '零成本', 'spec' => '', 'std_material' => '0')),
+)), '127.0.0.1');
+$fg = yf_detail($sqlite, 'A1-1-01-0381');
+yf_check(is_array($fg) && yf_format_decimal($fg['cost']['cost']) === '6.229167', '成品保留账上最新单位成本 6.229167');
+yf_check(yf_format_decimal($fg['item']['std_material']) === '171.9508', '成品页头保留主件单位标准材料成本 171.9508');
+yf_check(yf_format_decimal($fg['rollup']['material_total']) === '126.3' && (int)$fg['rollup']['missing_std'] === 1 && (int)$fg['rollup']['zero_std'] === 1 && (int)$fg['rollup']['phantom'] === 1, '单阶材料合计 126.3，缺 1 个，0 成本 1 个，含虚设件');
+yf_check(yf_format_decimal($fg['std_total']['total']) === '173.4508' && in_array('制费', $fg['std_total']['absent'], true), '标准成本合计只加已同步的材料、人工、加工');
+$fgRows = yf_search($sqlite, 'A1-1-01-0381');
+$fgHtml = yf_render_page(array(
+    'q' => 'A1-1-01-0381',
+    'code' => 'A1-1-01-0381',
+    'rows' => $fgRows['rows'],
+    'detail' => $fg,
+    'can_cost' => true,
+    'ready' => true,
+    'mirror_synced_at' => $fg['synced_at'],
+    'user_label' => '测试',
+    'notice' => '',
+    'recent' => false,
+));
+yf_check(strpos($fgHtml, '账上最新单位成本(CSTMB)') !== false && strpos($fgHtml, '6.229167') !== false && strpos($fgHtml, '171.9508') !== false && strpos($fgHtml, '材料合计') !== false && strpos($fgHtml, '126.3') !== false && strpos($fgHtml, '缺标准材料成本 1 个') !== false && strpos($fgHtml, '74') !== false, '页面同时给出账上成本、主件标准材料成本和单阶材料合计');
+$fgHidden = yf_render_page(array(
+    'q' => 'A1-1-01-0381',
+    'code' => 'A1-1-01-0381',
+    'rows' => $fgRows['rows'],
+    'detail' => $fg,
+    'can_cost' => false,
+    'ready' => true,
+    'mirror_synced_at' => $fg['synced_at'],
+    'user_label' => '测试',
+    'notice' => '',
+    'recent' => false,
+));
+$leaked = array('6.229167', '171.9508', '126.3', '74', '44.8', '22.4', '7.5', '63.717', '173.4508');
+$hiddenOk = strpos($fgHidden, 'A5-2-06-0029') !== false && strpos($fgHidden, '>材料合计<') === false && strpos($fgHidden, '缺标准材料成本') === false;
+foreach ($leaked as $secret) {
+    if (strpos($fgHidden, '>' . $secret . '<') !== false) {
+        $hiddenOk = false;
+    }
+}
+yf_check($hiddenOk, '没有成本权限时不输出标准成本、材料合计和最近进价');
+
+$legacy = new PDO('sqlite::memory:');
+$legacy->exec("CREATE TABLE yf_invmb (item_code TEXT PRIMARY KEY, item_name TEXT NOT NULL DEFAULT '', spec TEXT NOT NULL DEFAULT '', synced_at TEXT NOT NULL, batch_id TEXT NOT NULL DEFAULT '')");
+$legacy->exec("CREATE TABLE yf_bommd (parent_code TEXT NOT NULL, component_code TEXT NOT NULL, qty TEXT NOT NULL DEFAULT '0', synced_at TEXT NOT NULL, batch_id TEXT NOT NULL DEFAULT '', PRIMARY KEY (parent_code, component_code))");
+$legacy->exec("CREATE TABLE yf_cstmb (item_code TEXT PRIMARY KEY, period TEXT NOT NULL DEFAULT '', doc_no TEXT NOT NULL DEFAULT '', cost TEXT NOT NULL DEFAULT '0', synced_at TEXT NOT NULL, batch_id TEXT NOT NULL DEFAULT '')");
+$legacy->exec("CREATE TABLE yf_sync_batches (id INTEGER PRIMARY KEY AUTOINCREMENT, batch_id TEXT NOT NULL, payload_type TEXT NOT NULL, row_count INTEGER NOT NULL DEFAULT 0, upserted INTEGER NOT NULL DEFAULT 0, skipped INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT 'ok', message TEXT NOT NULL DEFAULT '', remote_ip TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)");
+$legacy->exec("INSERT INTO yf_invmb (item_code, item_name, spec, synced_at) VALUES ('KEEP', '旧品号', '', '2026-01-01 00:00:00')");
+$legacy->exec("INSERT INTO yf_bommd (parent_code, component_code, qty, synced_at) VALUES ('KEEP', 'C1', '3', '2026-01-01 00:00:00')");
+yf_check(!yf_tables_ready($legacy), '缺标准成本列时提示还要迁移');
+yf_install($legacy);
+$keptLegacy = $legacy->query("SELECT item_name, std_material FROM yf_invmb WHERE item_code = 'KEEP'")->fetch(PDO::FETCH_ASSOC);
+$legacyBom = $legacy->query("SELECT qty, base_qty, scrap_rate FROM yf_bommd WHERE parent_code = 'KEEP'")->fetch(PDO::FETCH_ASSOC);
+yf_check($keptLegacy['item_name'] === '旧品号' && $keptLegacy['std_material'] === null, '补列后旧品号还在，标准材料成本为空');
+yf_check(yf_format_decimal($legacyBom['qty']) === '3' && yf_format_decimal($legacyBom['base_qty']) === '1' && yf_format_decimal($legacyBom['scrap_rate']) === '0', '旧 BOM 补上底数 1 和损耗率 0');
+yf_install($legacy);
+yf_check(yf_tables_ready($legacy), '第二次迁移后标准成本列仍在');
 
 $bad = false;
 try {
@@ -196,7 +307,7 @@ if ($python !== '') {
     $sqlCode = 1;
     exec(escapeshellarg($python) . ' ' . escapeshellarg($root . '/yifei_agent/sync.py') . ' --print-sql', $sqlOut, $sqlCode);
     $printed = implode("\n", $sqlOut);
-    yf_check($sqlCode === 0 && strpos($printed, 'RTRIM(MB007)') !== false && strpos($printed, 'UPDATE') === false, '打印的 SQL 只读且含 RTRIM');
+    yf_check($sqlCode === 0 && strpos($printed, 'RTRIM(MB007)') !== false && strpos($printed, 'MB057') !== false && strpos($printed, 'MD007') !== false && strpos($printed, 'MD008') !== false && strpos($printed, 'UPDATE') === false, '打印的 SQL 只读且含标准材料成本、底数、损耗率');
 } else {
     yf_check(false, '找不到 python3');
 }
