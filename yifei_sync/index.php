@@ -13,8 +13,8 @@ if ($preview) {
     $canCost = true;
     $userLabel = '本地预览';
 } else {
-    require_once dirname(__DIR__) . '/includes/artdon_sso_core.php';
-    $user = artdon_sso_require_page('bom');
+    require_once __DIR__ . '/bootstrap.php';
+    $user = yf_require_bom_user();
     $canCost = function_exists('has_permission') && has_permission('bom.cost_view');
     $userLabel = (string)($user['display_name'] ?? ($user['real_name'] ?? ($user['username'] ?? '')));
 }
