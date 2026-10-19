@@ -146,7 +146,8 @@ def default_queries():
 def rtrim_text(value) -> str:
     if value is None:
         return ""
-    return str(value).rstrip(" ")
+    text = re.sub(r"[\x00-\x1f\x7f]+", " ", str(value).replace("\ufeff", ""))
+    return re.sub(r" {2,}", " ", text).strip(" ")
 
 
 def as_number(value):
