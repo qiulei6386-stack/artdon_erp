@@ -1,0 +1,33 @@
+[
+  {
+    "type": "invmb",
+    "batch_id": "sample-invmb",
+    "rows": [
+      {
+        "item_code": "A4-2-01-4286",
+        "item_name": "DL0067-10W双色温散热器+25*10mm紧打块(紧打)-粗坯",
+        "spec": "外径53mm, 高60mm"
+      }
+    ]
+  },
+  {
+    "type": "bommd",
+    "batch_id": "sample-bom",
+    "rows": [
+      {"parent_code": "A4-2-01-4286", "component_code": "A4-2-01-0211", "qty": 1},
+      {"parent_code": "A4-2-01-4286", "component_code": "A4-2-01-0967", "qty": 1}
+    ]
+  },
+  {
+    "type": "cstmb",
+    "batch_id": "sample-cost",
+    "rows": [
+      {
+        "item_code": "A4-2-01-4286",
+        "period": "20261001",
+        "doc_no": "SAMPLE-DOC",
+        "cost": "27.564722"
+      }
+    ]
+  }
+]

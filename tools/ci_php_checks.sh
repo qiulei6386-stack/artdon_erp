@@ -52,6 +52,7 @@ contract_tests=(
   tests/quote_shipment_document_contract.php
   tests/quote_order_read_contract.php
   tests/bom_cost_publication_contract.php
+  tests/yifei_sync_contract.php
   tests/bom_workflow_contract.php
   tests/quote_init_memory_contract.php
   tests/bom_dashboard_read_contract.php

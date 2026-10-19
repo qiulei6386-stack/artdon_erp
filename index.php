@@ -180,7 +180,8 @@ $moduleGroups = [
     ],
     '研发 / 成本 / 生产' => [
         ['key' => 'plm', 'title' => 'PLM 项目/研发', 'en' => 'Product Lifecycle', 'desc' => '样品开发、测试资料、问题闭环、项目文件。', 'href' => 'plm.php', 'permission' => 'plm.view', 'icon' => 'plm', 'accent' => 'violet', 'status' => '联动入口'],
-        ['title' => 'BOM 成本', 'en' => 'Bill of Materials', 'desc' => '物料、成本、加工、表面处理、包装损耗，并可联动当前型号命名系统。', 'href' => 'bom.php', 'permission' => 'bom.view', 'icon' => 'bom', 'accent' => 'blue', 'status' => '已接入权限底座', 'tags' => ['统一登录', '统一权限', '命名联动', '成本权限']],
+        ['title' => 'BOM 成本', 'en' => 'Bill of Materials', 'desc' => '物料、成本、加工、表面处理、包装损耗，并可联动当前型号命名系统。', 'href' => 'bom.php', 'permission' => 'bom.view', 'icon' => 'bom', 'accent' => 'blue', 'status' => '已接入权限底座', 'tags' => ['统一登录', '统一权限', '命名联动', '成本权限'], 'children' => [['label' => '易飞数据', 'href' => 'yifei_sync/index.php']]],
+        ['key' => 'yifei', 'title' => '易飞数据', 'en' => 'Yifei Read-only', 'desc' => '本地鼎捷易飞只读同步的品号、BOM 和最新成本。这里不能修改，也不会写回易飞。', 'href' => 'yifei_sync/index.php', 'permission' => 'bom.view', 'icon' => 'bom', 'accent' => 'cyan', 'status' => '只读镜像', 'tags' => ['品号', 'BOM', '最新成本']],
         ['key' => 'naming', 'title' => '型号命名', 'en' => 'Model Naming', 'desc' => '型号规则、产品图片、尺寸图、开孔和分类管理。', 'href' => 'naming.php', 'permission' => 'naming.view', 'icon' => 'model', 'accent' => 'cyan', 'status' => '已接入权限底座', 'tags' => ['统一登录', '统一权限', '统一日志']],
         ['key' => 'dispatch', 'title' => '派工待办', 'en' => 'Work Dispatch', 'desc' => '派工任务、多人协作、附件、日志、实时同步。', 'href' => 'dispatch_next.php', 'permission' => 'dispatch.view', 'icon' => 'task', 'accent' => 'red', 'status' => '已接入权限底座', 'tags' => ['个人待办', '派工任务', '多人协作', '附件日志']],
         ['key' => 'profile_weight', 'title' => '重量 / 型材', 'en' => 'Profile Weight', 'desc' => '型材重量、规格、损耗、加工参数和成本核算基础资料。', 'href' => 'crm.php#linkage', 'permission' => 'linkage.view', 'icon' => 'weight', 'accent' => 'green', 'status' => '联动入口'],

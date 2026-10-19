@@ -1,0 +1,24 @@
+{
+  "sqlserver": {
+    "driver": "SQL Server",
+    "server": "127.0.0.1",
+    "database": "AT",
+    "user": "yifei_readonly",
+    "password": "",
+    "timeout_seconds": 15
+  },
+  "guangzhou": {
+    "url": "https://novlight.com/yifei_sync/api.php",
+    "token": "",
+    "timeout_seconds": 60,
+    "verify_tls": true
+  },
+  "interval_minutes": 10,
+  "batch_size": 200,
+  "state_file": "state/watermark.json",
+  "log_file": "logs/sync.log",
+  "incremental": {
+    "enabled": false,
+    "date_columns": ["MODI_DATE", "CREATE_DATE"]
+  }
+}
