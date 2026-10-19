@@ -52,6 +52,7 @@ yf_check(strpos($examplePhp, 'allow_preview_without_login') === false, '示例�
 yf_check(strpos($agent, 'RTRIM(MB001)') !== false && strpos($agent, 'RTRIM(MB007)') !== false && strpos($agent, 'RTRIM(MD001)') !== false, '代理 SQL 对品号、主件使用 RTRIM');
 yf_check(strpos($agent, 'MB005') !== false && strpos($agent, 'RTRIM(MB002)') !== false && strpos($agent, "RTRIM(ISNULL(MB004, ''))") !== false, '成本取 MB005，品号是 MB007，MB004 只作单据号');
 yf_check(!preg_match('/(?:FROM|JOIN)\s+CSTLA\b|(?:FROM|JOIN)\s+CSTMC\b/', $agent), '代理不读 CSTLA / CSTMC');
+yf_check(!preg_match('/(?:FROM|JOIN)\s+BOMM[EF]\b/', $agent), '代理不读产品工艺路线，避免和会计页回写重复相加');
 yf_check(strpos($agentReadme, 'RTRIM(MB001)') !== false && strpos($agentReadme, 'RTRIM(MB007)') !== false && strpos($agentReadme, 'db_datareader') !== false, '代理说明写了 RTRIM 和只读角色');
 yf_check(strpos($agentReadme, '10') !== false && strpos($agentReadme, '不写易飞') !== false, '代理说明是约 10 分钟且不写回');
 yf_check(strpos($syncReadme, 'migrate.php') !== false && strpos($syncReadme, '/www/server/artdon_secrets/yifei_sync.php') !== false, '广州说明包含建表和仓库外密钥');
@@ -157,10 +158,10 @@ yf_apply($sqlite, yf_normalize_payload(array(
     'batch_id' => 't-std-parent',
     'rows' => array(
         array('item_code' => 'A1-1-01-0381', 'item_name' => '成品灯', 'spec' => '样例', 'item_attr' => 'M', 'std_material' => '171.950800', 'std_labor' => '1', 'std_subcontract' => '0.5', 'latest_purchase' => '63.717', 'hour_base' => '1'),
-        array('item_code' => 'A5-2-06-0029', 'item_name' => '驱动', 'spec' => '黑色', 'item_attr' => 'P', 'std_material' => '74'),
-        array('item_code' => 'A4-2-01-0235', 'item_name' => '元件', 'spec' => '', 'item_attr' => 'P', 'std_material' => '22.4'),
+        array('item_code' => 'A5-2-06-0029', 'item_name' => '驱动', 'spec' => '黑色', 'item_attr' => 'P', 'std_material' => '74', 'std_mfg' => '2', 'std_subcontract' => '1'),
+        array('item_code' => 'A4-2-01-0235', 'item_name' => '元件', 'spec' => '', 'item_attr' => 'P', 'std_material' => '22.4', 'std_mfg' => '0', 'std_subcontract' => '0.5'),
         array('item_code' => 'COMP-BASE', 'item_name' => '有底数', 'spec' => '', 'std_material' => '10'),
-        array('item_code' => 'COMP-ZERO', 'item_name' => '零成本', 'spec' => '', 'std_material' => '0'),
+        array('item_code' => 'COMP-ZERO', 'item_name' => '零成本', 'spec' => '', 'std_material' => '0', 'std_mfg' => '0'),
         array('item_code' => 'COMP-MISS', 'item_name' => '虚设', 'spec' => '', 'item_attr' => 'Y'),
     ),
 )), '127.0.0.1');
@@ -203,7 +204,19 @@ $fg = yf_detail($sqlite, 'A1-1-01-0381');
 yf_check(is_array($fg) && yf_format_decimal($fg['cost']['cost']) === '6.229167', '成品保留账上最新单位成本 6.229167');
 yf_check(yf_format_decimal($fg['item']['std_material']) === '171.9508', '成品页头保留主件单位标准材料成本 171.9508');
 yf_check(yf_format_decimal($fg['rollup']['material_total']) === '126.3' && (int)$fg['rollup']['missing_std'] === 1 && (int)$fg['rollup']['zero_std'] === 1 && (int)$fg['rollup']['phantom'] === 1, '单阶材料合计 126.3，缺 1 个，0 成本 1 个，含虚设件');
-yf_check(yf_format_decimal($fg['std_total']['total']) === '173.4508' && in_array('制费', $fg['std_total']['absent'], true), '标准成本合计只加已同步的材料、人工、加工');
+yf_check(yf_format_decimal($fg['rollup']['mfg_total']) === '2' && (int)$fg['rollup']['missing_mfg'] === 2 && (int)$fg['rollup']['zero_mfg'] === 2, '单阶制费合计只加已同步的子件，0 也计入');
+yf_check(yf_format_decimal($fg['rollup']['process_total']) === '2' && (int)$fg['rollup']['missing_process'] === 3, '单阶加工按有效用量展开');
+yf_check(yf_format_decimal($fg['rollup']['amount_total']) === '130.3', '表尾成本金额是材料+制费+加工');
+yf_check(yf_format_decimal($fg['std_total']['total']) === '172.4508' && yf_format_decimal($fg['std_total']['labor']) === '1' && in_array('制费', $fg['std_total']['absent'], true) && !in_array('人工', $fg['std_total']['present'], true), '主件成本金额只加材料、制费、加工，人工另列');
+$report = yf_std_total(array(
+    'std_material' => '153.8348',
+    'std_labor' => '0.0992',
+    'std_mfg' => '10',
+    'std_subcontract' => '8.116',
+    'level_mfg' => '18.116',
+    'level_process' => '1',
+));
+yf_check(yf_format_decimal($report['total']) === '171.9508' && yf_format_decimal($report['labor']) === '0.0992', '材料 153.8348 加制费加工等于报表成本金额，本阶不重复加');
 $fgRows = yf_search($sqlite, 'A1-1-01-0381');
 $fgHtml = yf_render_page(array(
     'q' => 'A1-1-01-0381',
@@ -217,7 +230,7 @@ $fgHtml = yf_render_page(array(
     'notice' => '',
     'recent' => false,
 ));
-yf_check(strpos($fgHtml, '账上最新单位成本(CSTMB)') !== false && strpos($fgHtml, '6.229167') !== false && strpos($fgHtml, '171.9508') !== false && strpos($fgHtml, '材料合计') !== false && strpos($fgHtml, '126.3') !== false && strpos($fgHtml, '缺标准材料成本 1 个') !== false && strpos($fgHtml, '74') !== false, '页面同时给出账上成本、主件标准材料成本和单阶材料合计');
+yf_check(strpos($fgHtml, '成本金额（材料+制费+加工）') !== false && strpos($fgHtml, '不是成本金额') !== false && strpos($fgHtml, 'class="num cost">172.4508') !== false && strpos($fgHtml, 'class="cost primary-num">172.4508') !== false && strpos($fgHtml, 'class="num ledger">6.229167') !== false && strpos($fgHtml, 'class="num cost">6.229167') === false && strpos($fgHtml, '126.3') !== false && strpos($fgHtml, 'class="num cost">130.3') !== false && strpos($fgHtml, '缺标准材料成本 1 个') !== false && strpos($fgHtml, '子件合计和主件成本金额') !== false && strpos($fgHtml, '74') !== false, '页面以成本金额为主，CSTMB 降为次要，表尾有分项合计');
 $fgHidden = yf_render_page(array(
     'q' => 'A1-1-01-0381',
     'code' => 'A1-1-01-0381',
@@ -230,7 +243,7 @@ $fgHidden = yf_render_page(array(
     'notice' => '',
     'recent' => false,
 ));
-$leaked = array('6.229167', '171.9508', '126.3', '74', '44.8', '22.4', '7.5', '63.717', '173.4508');
+$leaked = array('6.229167', '171.9508', '172.4508', '126.3', '130.3', '74', '44.8', '45.8', '22.4', '7.5', '63.717', '77');
 $hiddenOk = strpos($fgHidden, 'A5-2-06-0029') !== false && strpos($fgHidden, '>材料合计<') === false && strpos($fgHidden, '缺标准材料成本') === false;
 foreach ($leaked as $secret) {
     if (strpos($fgHidden, '>' . $secret . '<') !== false) {

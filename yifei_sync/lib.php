@@ -13,7 +13,10 @@ declare(strict_types=1);
  *   BOMMD  MD001 主件，MD003 元件，MD006 组成用量，MD007 底数，MD008 损耗率
  *   CSTMB  MB002 期间，MB004 单据号（不是品号），MB007 品号，MB005 成本
  * 相邻推断、库里没有就跳过的栏位：MB059 单位标准制造费用，MB060 单位标准加工费用，MB063 本阶加工。
- * 标准成本合计是这四项单位标准成本的和，不是单独一列。不使用 CSTLA、CSTMC。
+ * 成本金额（标准成本合计）= 材料 MB057 + 制费 MB059 + 加工 MB060。人工 MB058 另列，不计入。
+ * 本阶人工/制费/加工是这一阶的数，计算标准成本后已经含在单位标准里，不再加第二次。
+ * 特征工艺（CNC 开料、加工）在「计算标准成本」后回写到上述会计栏，不另读工艺路线。
+ * 不使用 CSTLA、CSTMC，也不读 BOMME / BOMMF。
  * char 尾部空格在入库时按 RTRIM 去掉。请求里没有的键不会覆盖已有列。
  */
 
@@ -817,27 +820,76 @@ function yf_effective_qty($qty, $base, $scrap): string
     return yf_decimal_mul(yf_decimal_div($qtyNorm, $baseNorm), $factor);
 }
 
+function yf_extend_unit($unit, string $effective, string $label): array
+{
+    if ($unit === null || $unit === '') {
+        return array('missing' => true, 'amount' => null, 'zero' => false);
+    }
+    $norm = yf_decimal_in((string)$unit, $label);
+    return array(
+        'missing' => false,
+        'amount' => yf_decimal_mul($norm, $effective),
+        'zero' => yf_decimal_is_zero($norm),
+    );
+}
+
+function yf_sum_present(array $parts): ?string
+{
+    $sum = null;
+    foreach ($parts as $part) {
+        if (!empty($part['missing']) || $part['amount'] === null) {
+            continue;
+        }
+        $sum = $sum === null ? (string)$part['amount'] : yf_decimal_add($sum, (string)$part['amount']);
+    }
+    return $sum;
+}
+
 function yf_line_material(array $child): array
 {
-    $std = $child['std_material'] ?? null;
-    $missing = ($std === null || $std === '');
     $effective = yf_effective_qty($child['qty'] ?? '0', $child['base_qty'] ?? null, $child['scrap_rate'] ?? null);
-    $extended = null;
-    if (!$missing) {
-        $extended = yf_decimal_mul(yf_decimal_in((string)$std, '单位标准材料成本'), $effective);
-    }
+    $material = yf_extend_unit($child['std_material'] ?? null, $effective, '单位标准材料成本');
+    $mfg = yf_extend_unit($child['std_mfg'] ?? null, $effective, '单位标准制费');
+    $process = yf_extend_unit($child['std_subcontract'] ?? null, $effective, '单位标准加工');
     return array(
         'effective_qty' => $effective,
-        'material_cost' => $extended,
-        'std_missing' => $missing,
+        'material_cost' => $material['amount'],
+        'mfg_cost' => $mfg['amount'],
+        'process_cost' => $process['amount'],
+        'amount' => yf_sum_present(array($material, $mfg, $process)),
+        'std_missing' => $material['missing'],
+        'mfg_missing' => $mfg['missing'],
+        'process_missing' => $process['missing'],
+        'std_zero' => $material['zero'],
+        'mfg_zero' => $mfg['zero'],
+        'process_zero' => $process['zero'],
     );
+}
+
+function yf_rollup_bucket(array $lines, string $amountKey, string $missingKey, string $zeroKey): array
+{
+    $sum = null;
+    $missing = 0;
+    $zero = 0;
+    foreach ($lines as $line) {
+        if (!empty($line[$missingKey])) {
+            $missing++;
+            continue;
+        }
+        if (!empty($line[$zeroKey])) {
+            $zero++;
+        }
+        $amount = $line[$amountKey] ?? null;
+        if ($amount === null) {
+            continue;
+        }
+        $sum = $sum === null ? (string)$amount : yf_decimal_add($sum, (string)$amount);
+    }
+    return array('total' => $sum, 'missing' => $missing, 'zero' => $zero);
 }
 
 function yf_material_rollup(array $children): array
 {
-    $total = '0.000000';
-    $missing = 0;
-    $zero = 0;
     $phantom = 0;
     $lines = array();
     foreach ($children as $child) {
@@ -847,20 +899,29 @@ function yf_material_rollup(array $children): array
         if ($attr === 'Y') {
             $phantom++;
         }
-        if ($line['std_missing']) {
-            $missing++;
+    }
+    $material = yf_rollup_bucket($lines, 'material_cost', 'std_missing', 'std_zero');
+    $mfg = yf_rollup_bucket($lines, 'mfg_cost', 'mfg_missing', 'mfg_zero');
+    $process = yf_rollup_bucket($lines, 'process_cost', 'process_missing', 'process_zero');
+    $amount = null;
+    foreach ($lines as $line) {
+        if ($line['amount'] === null) {
             continue;
         }
-        if (yf_decimal_is_zero(yf_decimal_in((string)$child['std_material'], '单位标准材料成本'))) {
-            $zero++;
-        }
-        $total = yf_decimal_add($total, (string)$line['material_cost']);
+        $amount = $amount === null ? (string)$line['amount'] : yf_decimal_add($amount, (string)$line['amount']);
     }
     return array(
         'lines' => $lines,
-        'material_total' => $total,
-        'missing_std' => $missing,
-        'zero_std' => $zero,
+        'material_total' => $material['total'] ?? '0.000000',
+        'mfg_total' => $mfg['total'],
+        'process_total' => $process['total'],
+        'amount_total' => $amount,
+        'missing_std' => $material['missing'],
+        'missing_mfg' => $mfg['missing'],
+        'missing_process' => $process['missing'],
+        'zero_std' => $material['zero'],
+        'zero_mfg' => $mfg['zero'],
+        'zero_process' => $process['zero'],
         'phantom' => $phantom,
     );
 }
@@ -869,12 +930,18 @@ function yf_std_total(?array $item): array
 {
     $parts = array(
         'std_material' => '材料',
-        'std_labor' => '人工',
         'std_mfg' => '制费',
         'std_subcontract' => '加工',
     );
+    $values = array('材料' => null, '制费' => null, '加工' => null);
     if (!$item) {
-        return array('total' => null, 'present' => array(), 'absent' => array_values($parts));
+        return array(
+            'total' => null,
+            'present' => array(),
+            'absent' => array_values($parts),
+            'parts' => $values,
+            'labor' => null,
+        );
     }
     $sum = '0.000000';
     $present = array();
@@ -885,12 +952,20 @@ function yf_std_total(?array $item): array
             continue;
         }
         $present[] = $label;
-        $sum = yf_decimal_add($sum, yf_decimal_in((string)$item[$key], $label));
+        $norm = yf_decimal_in((string)$item[$key], $label);
+        $values[$label] = $norm;
+        $sum = yf_decimal_add($sum, $norm);
+    }
+    $labor = null;
+    if (array_key_exists('std_labor', $item) && $item['std_labor'] !== null && $item['std_labor'] !== '') {
+        $labor = yf_decimal_in((string)$item['std_labor'], '人工');
     }
     return array(
         'total' => $present ? $sum : null,
         'present' => $present,
         'absent' => $absent,
+        'parts' => $values,
+        'labor' => $labor,
     );
 }
 
@@ -991,7 +1066,7 @@ function yf_search(PDO $pdo, string $q, int $limit = 50): array
     }
     $q = trim($q);
     if ($q === '') {
-        $sql = 'SELECT i.item_code, i.item_name, i.spec, i.std_material, i.synced_at AS item_synced_at,
+        $sql = 'SELECT i.item_code, i.item_name, i.spec, i.std_material, i.std_mfg, i.std_subcontract, i.synced_at AS item_synced_at,
                 c.cost, c.period, c.doc_no, c.synced_at AS cost_synced_at
             FROM yf_invmb i
             LEFT JOIN yf_cstmb c ON c.item_code = i.item_code
@@ -1005,7 +1080,7 @@ function yf_search(PDO $pdo, string $q, int $limit = 50): array
     $sql = 'SELECT u.item_code,
             COALESCE(i.item_name, \'\') AS item_name,
             COALESCE(i.spec, \'\') AS spec,
-            i.std_material,
+            i.std_material, i.std_mfg, i.std_subcontract,
             i.synced_at AS item_synced_at,
             c.cost, c.period, c.doc_no, c.synced_at AS cost_synced_at
         FROM (
@@ -1073,9 +1148,9 @@ function yf_detail(PDO $pdo, string $code): ?array
     rsort($times);
     $rollup = yf_material_rollup($children);
     foreach ($children as $i => $_child) {
-        $children[$i]['effective_qty'] = $rollup['lines'][$i]['effective_qty'];
-        $children[$i]['material_cost'] = $rollup['lines'][$i]['material_cost'];
-        $children[$i]['std_missing'] = $rollup['lines'][$i]['std_missing'];
+        foreach (array('effective_qty', 'material_cost', 'mfg_cost', 'process_cost', 'amount', 'std_missing', 'mfg_missing', 'process_missing') as $key) {
+            $children[$i][$key] = $rollup['lines'][$i][$key];
+        }
     }
     return array(
         'code' => $code,
@@ -1086,8 +1161,15 @@ function yf_detail(PDO $pdo, string $code): ?array
         'synced_at' => $times ? $times[0] : '',
         'rollup' => array(
             'material_total' => $rollup['material_total'],
+            'mfg_total' => $rollup['mfg_total'],
+            'process_total' => $rollup['process_total'],
+            'amount_total' => $rollup['amount_total'],
             'missing_std' => $rollup['missing_std'],
+            'missing_mfg' => $rollup['missing_mfg'],
+            'missing_process' => $rollup['missing_process'],
             'zero_std' => $rollup['zero_std'],
+            'zero_mfg' => $rollup['zero_mfg'],
+            'zero_process' => $rollup['zero_process'],
             'phantom' => $rollup['phantom'],
         ),
         'std_total' => yf_std_total($itemRow),
