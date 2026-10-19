@@ -297,17 +297,24 @@ function yf_is_list(array $rows): bool
     return true;
 }
 
-function yf_text(string $value, int $max, string $field, bool $required): string
+function yf_text(string $value, int $max, string $field, bool $required, bool $truncate = false): string
 {
+    // 易飞品名/规格里常有换行、Tab 等控制字符：统一替换为空格，而不是拒收。
     $value = str_replace("\0", '', $value);
-    if (preg_match('/[\r\n]/', $value)) {
-        throw new InvalidArgumentException($field . ' 不能包含换行');
+    if (strncmp($value, "\xEF\xBB\xBF", 3) === 0) {
+        $value = substr($value, 3);
     }
+    $value = preg_replace('/[\x00-\x1F\x7F]+/', ' ', $value);
+    $value = preg_replace('/ {2,}/', ' ', $value);
     $value = trim($value);
     if ($required && $value === '') {
         throw new InvalidArgumentException($field . ' 不能为空');
     }
     $length = function_exists('mb_strlen') ? mb_strlen($value, 'UTF-8') : strlen($value);
+    if ($length > $max && $truncate) {
+        $value = function_exists('mb_substr') ? mb_substr($value, 0, $max, 'UTF-8') : substr($value, 0, $max);
+        $length = $max;
+    }
     if ($length > $max) {
         throw new InvalidArgumentException($field . ' 超过 ' . $max . ' 个字符');
     }
@@ -474,8 +481,8 @@ function yf_normalize_row(string $type, array $row, int $index): array
     if ($type === 'invmb') {
         return array(
             'item_code' => yf_text((string)($row['item_code'] ?? ''), YF_CODE_MAX, $at . '品号', true),
-            'item_name' => yf_text((string)($row['item_name'] ?? ''), YF_NAME_MAX, $at . '品名', false),
-            'spec' => yf_text((string)($row['spec'] ?? ''), YF_SPEC_MAX, $at . '规格', false),
+            'item_name' => yf_text((string)($row['item_name'] ?? ''), YF_NAME_MAX, $at . '品名', false, true),
+            'spec' => yf_text((string)($row['spec'] ?? ''), YF_SPEC_MAX, $at . '规格', false, true),
         );
     }
     if ($type === 'bommd') {
