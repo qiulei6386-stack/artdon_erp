@@ -10,8 +10,8 @@
 
 生产目录是 `/www/wwwroot/Artdon/artdon_erp/`，库名 `artdon_new_erp`。等这个提交进入 `main` 并且正式目录已经是同一个提交号之后：
 
-1. 在正式目录执行 `php yifei_sync/migrate.php`。脚本建 `yf_invmb`、`yf_bommd`、`yf_cstmb`、`yf_sync_batches`。表已经存在时，会补上单位标准材料成本等会计栏位，以及 BOM 的底数、损耗率。可重复执行，不会清空数据。
-2. 然后在易飞那台 Windows 机器上执行 `py -3.13 sync.py --once`（按那台机器的 Python 启动方式调整）。不重跑的话，品号主档没有单位标准材料成本，材料合计对不上易飞报表。旧代理推送的批次没有这些键，不会把已经写入的标准成本清掉。
+1. 在正式目录执行 `php yifei_sync/migrate.php`。脚本建 `yf_invmb`、`yf_bommd`、`yf_cstmb`、`yf_item_feature`、`yf_sync_batches`。表已经存在时，会补上会计栏位、BOM 底数/损耗率、特征明细表。可重复执行，不会清空数据。
+2. 在易飞 Windows 上用当前仓库 **覆盖** `yifei_agent`（至少 `sync.py`），执行 `py -3.13 sync.py --full`（按那台机器的 Python 调整）。特征数据写入 `yf_item_feature`；只跑 `--once` 且从未全量时，粗胚特征可能缺失。旧 `invmb` 批次没有新键时，不会把已有标准成本清掉。
 3. 生成密钥，例如 `php -r "echo bin2hex(random_bytes(24)), PHP_EOL;"`。
 4. 把密钥写到仓库外的 `/www/server/artdon_secrets/yifei_sync.php`：
 
@@ -33,7 +33,7 @@ return array(
 
 请求头：`X-Yifei-Token`（也接受 `Authorization: Bearer`）和 `Content-Type: application/json`。
 
-`type` 三选一，单次最多 500 行。按品号、或主件+元件 upsert。成本按品号只留一行：后来的期间更旧时跳过，不覆盖已有的较新期间。
+`type` 为 `invmb`、`bommd`、`cstmb` 或 `feature`，单次最多 500 行（`feature` 还需 `items` 数组，最多 500 个品号）。`feature` 会先删除 `items` 里各品号的旧特征行再插入 `rows`。成本按品号只留一行：后来的期间更旧时跳过，不覆盖已有的较新期间。
 
 ```bash
 curl -sS -X POST 'https://novlight.com/yifei_sync/api.php' \
@@ -53,7 +53,10 @@ curl -sS -X POST 'https://novlight.com/yifei_sync/api.php' \
 | `yf_invmb` | 品号 `item_code` | INVMB.MB001 品号，MB002 品名，MB003 规格。另见下表会计栏位 |
 | `yf_bommd` | 主件 + 元件 | BOMMD.MD001 主件，MD003 元件，MD006 组成用量，MD007 底数，MD008 损耗率 |
 | `yf_cstmb` | 品号 | CSTMB.MB007 品号，MB002 期间，MB004 单据号（不是品号），MB005 账上最新单位成本 |
+| `yf_item_feature` | 品号 + `feature_code` | 录入品号「特征数据」：INVMB 数值列（多为 UDF*）+ DSCLB 标题 |
 | `yf_sync_batches` | 自增 | 每次请求的批次日志 |
+
+`yf_item_feature` 列：`feature_code`（列名）、`feature_name`（工艺名）、`amount`（单位金额）、`sort_no`。
 
 `yf_invmb` 会计栏位：
 
@@ -70,9 +73,9 @@ curl -sS -X POST 'https://novlight.com/yifei_sync/api.php' \
 | `level_process` | MB063 | 本阶加工 | 推断。列不存在会跳过 |
 | `hour_base` | MB096 | 工时底数 | 已核实 |
 
-成本金额（标准成本合计）由材料、制费、加工三项里非空的值相加，用来对照易飞报表的「成本金额」。人工另列，不计入。本阶人工、本阶制费、本阶加工是这一阶的数，计算标准成本之后已经含在单位标准里，页面不再加第二次。未同步的项会在页面上点名。标准进价的列名没有核实，不入库。MB042 是领料码。
+成本金额（标准成本合计）= 材料 + 制费 + 加工（MB057/059/060 已同步部分）。当 **MB059、MB060 都为空或 0** 时，再加上 `yf_item_feature` 金额合计（粗胚常见）。任一制费或加工已为非零时，不再加特征，避免与「计算标准成本」回写双计。人工另列；本阶栏不重复加。未同步的会计栏会在页面上点名。
 
-特征数据上的 CNC 开料、加工不在单独一列。易飞对非采购件会从产品工艺路线（BOMME 单头、BOMMF 单身）取委外单价；执行「计算标准成本」后回写到品号会计页的单位标准加工（MB060），制费回写到单位标准制造费用（MB059），本阶部分在 MB062、MB063。这些列已经随品号同步。本阶段不读 BOMME、BOMMF：公开资料只核实了工艺路线编号，没有核实委外单价的列名；再加一次会和已经回写的会计栏重复。子件的单位标准制造费用经常是 0，是因为这笔费用记在主件本阶，或已经卷进主件的单位标准制费/加工。
+特征来源：INVMB 用户自定义数值列 + DSCSYS/AT 的 `DSCLB` 标题（见 `yifei_agent/README.md`）。**不用** INVMI/INVMJ 属性码、BOMME/BOMMF 工艺路线。成品算过标准成本后，制费/加工多在 MB059/MB060，页面只显示会计栏合计。
 
 材料合计（单阶，对应易飞标准成本报表的材料合计口径，但只展开当前 `yf_bommd` 直接子件）：
 
@@ -84,11 +87,13 @@ curl -sS -X POST 'https://novlight.com/yifei_sync/api.php' \
 
 ## 这次要不要换 Windows 上的 sync.py
 
-这次没有改 `yifei_agent/sync.py`。成本金额用的材料、制费、加工都是上一版已经在推的 MB057、MB059、MB060。
+**必须。** 用当前仓库的 `yifei_agent` 覆盖 Windows 目录（至少替换 `sync.py`），在广州执行 `migrate.php` 后运行：
 
-Windows 上如果已经是会推这三列的 `sync.py`，不用重新打包，也不用为这一页再跑同步。
+```bat
+py -3.13 sync.py --full
+```
 
-如果那台机器上的 `sync.py` 还是更早的版本，品号推送里没有单位标准制费和加工，用当前仓库的 `yifei_agent` 整目录覆盖后再执行 `py -3.13 sync.py --once`（按那台机器的 Python 启动方式调整）。
+特征批次依赖新版代理；不全量时 `yf_item_feature` 可能不完整。会计栏 MB057/059/060 仍来自 `invmb` 批次。
 
 ## 核对成品 A1-1-01-0381
 
@@ -107,6 +112,10 @@ Windows 上如果已经是会推这三列的 `sync.py`，不用重新打包，�
 3. 表尾「材料」约 153.8348。子件 A5-2-06-0029 的单位标准材料成本应为 74，用量 1、底数 1、损耗 0 时，该行材料为 74。
 4. A4-2-01-0235 的单位标准材料成本若是 22.400，而报表该行材料是 29.100，两者相除约 1.299107，不是整数用量。先看该行底数和损耗，以及它是不是还有下阶。不要改用标准进价或最近进价去凑 29.100。采购资料二上的 74 / 63.717、26 / 23.5 分别是标准进价和最近进价，不参与成本金额。
 5. 表尾成本金额若离页头较远，先看制费、加工未同步的个数，再看主件本阶制费、本阶加工。仍对不上时，常见原因是多阶 BOM、虚设件（MB025=Y，报表会展开，本页不展开）、底数或损耗还没重推、报表勾了「材料成本以最近进价计算」。本阶段不自动展开多阶。
+
+## 核对粗胚 A4-2-01-0254（特征数据）
+
+易飞录入品号：材料约 **3.180**；特征数据常见 **数控开料 0.05、数控加工 1.095、五金钻孔 0.2376**（列名以现场 UDF/DSCLB 为准）。会计页制费/加工常为 0。页头 **成本金额** 目标约 **4.56–4.57**（合计 **4.5626**）。列表同一列为主数字；展开可见特征明细。若 MB059 或 MB060 已为非零，则只信会计栏，不再加特征。
 
 ## 明确不做
 

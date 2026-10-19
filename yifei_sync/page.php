@@ -116,7 +116,7 @@ h2{font-size:16px;margin:0 0 8px}
   </div>
 </div></header>
 <main class="wrap">
-  <div class="banner">数据由本地易飞（业务库 AT）只读推送。本页没有回写按钮，也不会改易飞里的任何资料。对照易飞报表时看「成本金额」：单位标准材料 + 单位标准制费 + 单位标准加工。账上最新单位成本是 CSTMB.MB005，不是报表上的成本金额。人工和本阶栏另列，不重复加进成本金额。材料、制费、加工的单阶金额 = 对应单位标准成本 × 组成用量 / 底数 × (1+损耗率)。</div>
+  <div class="banner">数据由本地易飞（业务库 AT）只读推送。本页没有回写按钮，也不会改易飞里的任何资料。对照易飞报表时看「成本金额」：单位标准材料 + 单位标准制费 + 单位标准加工；当制费、加工都未写入会计栏（MB059/MB060 为空或 0）时，再加上录入品号「特征数据」里的工艺金额。任一制费或加工已为非零时不再加特征，避免双计。账上最新单位成本是 CSTMB.MB005，不是报表上的成本金额。人工和本阶栏另列。BOM 单阶金额含子件特征（按有效用量展开）。</div>
   <section class="card">
     <form method="get" action="">
       <input id="q" type="search" name="q" value="<?= yf_h($q) ?>" placeholder="品号或品名，例如 A4-2-01-4286" maxlength="80" autofocus>
@@ -157,7 +157,7 @@ h2{font-size:16px;margin:0 0 8px}
           <?php foreach ($rows as $row): ?>
             <?php
             $itemCode = (string)$row['item_code'];
-            $amount = $canCost ? yf_std_total($row) : array('total' => null, 'parts' => array());
+            $amount = $canCost ? yf_std_total($row, $row['feature_rows'] ?? array()) : array('total' => null, 'parts' => array());
             $parts = $amount['parts'] ?? array();
             ?>
             <tr class="<?= $itemCode === $code ? 'active' : '' ?>">
@@ -217,7 +217,18 @@ function yf_render_detail(array $detail, bool $canCost): string
         <div><span>规格</span><b><?= yf_h($spec !== '' ? $spec : '—') ?></b></div>
         <div><span>品号属性</span><b><?= yf_h(yf_attr_label(is_array($item) ? ($item['item_attr'] ?? '') : '')) ?></b></div>
         <?php if ($canCost): ?>
-          <div class="primary"><span>成本金额（材料+制费+加工）</span><b class="cost primary-num"><?= yf_h(yf_money($parentAmount)) ?></b><span>对照易飞报表的成本金额<?php if (!empty($stdTotal['absent'])): ?>。未同步：<?= yf_h(implode('、', $stdTotal['absent'])) ?><?php endif; ?></span></div>
+          <div class="primary"><span>成本金额（材料+制费+加工<?php if (!empty($stdTotal['features_applied'])): ?>+特征<?php endif; ?>）</span><b class="cost primary-num"><?= yf_h(yf_money($parentAmount)) ?></b><span>对照易飞报表的成本金额<?php if (!empty($stdTotal['absent'])): ?>。会计栏未同步：<?= yf_h(implode('、', $stdTotal['absent'])) ?><?php endif; ?><?php if (!empty($stdTotal['features_applied'])): ?>。已含特征加工合计 <?= yf_h(yf_money($stdTotal['feature_total'] ?? null)) ?><?php endif; ?></span></div>
+          <?php if (!empty($stdTotal['feature_lines'])): ?>
+          <div class="feature-block"><span>特征数据（计入成本金额）</span>
+            <ul class="feature-list">
+              <?php foreach ($stdTotal['feature_lines'] as $feat): ?>
+                <li><?= yf_h(($feat['feature_name'] !== '' ? $feat['feature_name'] : $feat['feature_code']) . '：' . yf_money($feat['amount'] ?? null)) ?></li>
+              <?php endforeach; ?>
+            </ul>
+          </div>
+          <?php elseif (!empty($detail['features']) && empty($stdTotal['features_applied']) && yf_should_add_feature_costs(is_array($item) ? $item : null) === false): ?>
+          <div><span>特征数据</span><b>已有制费/加工写入会计栏，特征金额不重复计入</b></div>
+          <?php endif; ?>
           <div><span>材料（MB057）</span><b><?= yf_h(yf_money($parts['材料'] ?? $parentStd)) ?></b></div>
           <div><span>制费（MB059）</span><b><?= yf_h(yf_money($parts['制费'] ?? null)) ?></b></div>
           <div><span>加工（MB060）</span><b><?= yf_h(yf_money($parts['加工'] ?? null)) ?></b></div>
@@ -302,7 +313,7 @@ function yf_render_detail(array $detail, bool $canCost): string
         <?php if ($canCost): ?>
           <p class="empty">表尾「材料」「制费」「加工」「成本金额」是各列单阶金额相加。每一列 = 子件单位标准成本 × 组成用量 / 底数 × (1+损耗率)。底数为空或 0 按 1，损耗为空按 0。损耗率 0.25 表示 25%。这是单阶，不展开虚设件和下阶。页头成本金额才用来对照易飞报表。</p>
           <?php if ($gap): ?><p class="notice">单阶材料合计与主件单位标准材料成本不一致。易飞计算标准成本后，主件上的材料成本通常已含下阶；多阶、虚设件或报表改用最近进价时，两边会不同。</p><?php endif; ?>
-          <?php if ($amountGap): ?><p class="notice">子件合计和主件成本金额不一致。CNC 开料、加工在特征数据里，计算标准成本后写入主件的单位标准制费/加工或本阶制费/加工，子件的单位标准制造费用经常仍是 0，所以表尾会和页头差一截。</p><?php endif; ?>
+          <?php if ($amountGap): ?><p class="notice">子件合计和主件成本金额不一致。粗胚常在特征数据里记 CNC 工艺费，而子件 MB059/MB060 仍为 0；本页已在子件成本金额里按有效用量加上特征（若主件已回写制费/加工则不再加特征）。多阶 BOM、虚设件展开差异也会造成表尾与页头不同。</p><?php endif; ?>
         <?php endif; ?>
         <?php if ((int)$rollup['phantom'] > 0): ?><p class="notice">本阶含虚设件。易飞标准成本报表会展开虚设件，这里只按直接子件计算。</p><?php endif; ?>
       <?php endif; ?>

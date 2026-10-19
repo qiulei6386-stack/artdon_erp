@@ -15,8 +15,10 @@ declare(strict_types=1);
  * 相邻推断、库里没有就跳过的栏位：MB059 单位标准制造费用，MB060 单位标准加工费用，MB063 本阶加工。
  * 成本金额（标准成本合计）= 材料 MB057 + 制费 MB059 + 加工 MB060。人工 MB058 另列，不计入。
  * 本阶人工/制费/加工是这一阶的数，计算标准成本后已经含在单位标准里，不再加第二次。
- * 特征工艺（CNC 开料、加工）在「计算标准成本」后回写到上述会计栏，不另读工艺路线。
- * 不使用 CSTLA、CSTMC，也不读 BOMME / BOMMF。
+ * 特征工艺（CNC 开料、加工）在录入品号「特征数据」页，多为 INVMB 用户自定义数值列（UDF*），
+ *   栏位标题在 DSCSYS/AT 的 DSCLB（LB005=Caption，LB006=列名，LB009/ LB008=简繁标题）。
+ *   明细落在 yf_item_feature；当 MB059、MB060 都为空或 0 时，成本金额再加上特征金额合计，避免与已回写制费/加工双计。
+ * 不使用 INVMI/INVMJ 属性码、BOMME/BOMMF、CSTLA、CSTMC。
  * char 尾部空格在入库时按 RTRIM 去掉。请求里没有的键不会覆盖已有列。
  */
 
@@ -135,6 +137,17 @@ function yf_mysql_statements(): array
             KEY idx_yf_cstmb_period (period),
             KEY idx_yf_cstmb_synced (synced_at)
         ) $engine",
+        "CREATE TABLE IF NOT EXISTS yf_item_feature (
+            item_code VARCHAR(40) NOT NULL COMMENT 'INVMB.MB001 品号',
+            feature_code VARCHAR(40) NOT NULL COMMENT '列名或配置代号',
+            feature_name VARCHAR(255) NOT NULL DEFAULT '' COMMENT 'DSCLB 或配置中的工艺名',
+            amount DECIMAL(18,6) NOT NULL COMMENT '单位特征加工金额',
+            sort_no INT NOT NULL DEFAULT 0 COMMENT '推送顺序',
+            synced_at DATETIME NOT NULL,
+            batch_id VARCHAR(64) NOT NULL DEFAULT '',
+            PRIMARY KEY (item_code, feature_code),
+            KEY idx_yf_feature_synced (synced_at)
+        ) $engine",
         "CREATE TABLE IF NOT EXISTS yf_sync_batches (
             id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
             batch_id VARCHAR(64) NOT NULL,
@@ -182,6 +195,16 @@ function yf_sqlite_statements(): array
             cost TEXT NOT NULL DEFAULT \'0\',
             synced_at TEXT NOT NULL,
             batch_id TEXT NOT NULL DEFAULT \'\'
+        )',
+        'CREATE TABLE IF NOT EXISTS yf_item_feature (
+            item_code TEXT NOT NULL,
+            feature_code TEXT NOT NULL,
+            feature_name TEXT NOT NULL DEFAULT \'\',
+            amount TEXT NOT NULL,
+            sort_no INTEGER NOT NULL DEFAULT 0,
+            synced_at TEXT NOT NULL,
+            batch_id TEXT NOT NULL DEFAULT \'\',
+            PRIMARY KEY (item_code, feature_code)
         )',
         'CREATE TABLE IF NOT EXISTS yf_sync_batches (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -571,8 +594,8 @@ function yf_decode_payload(string $raw): array
 function yf_normalize_payload(array $data): array
 {
     $type = isset($data['type']) ? trim((string)$data['type']) : '';
-    if (!in_array($type, array('invmb', 'bommd', 'cstmb'), true)) {
-        throw new InvalidArgumentException('type 只能是 invmb、bommd 或 cstmb');
+    if (!in_array($type, array('invmb', 'bommd', 'cstmb', 'feature'), true)) {
+        throw new InvalidArgumentException('type 只能是 invmb、bommd、cstmb 或 feature');
     }
     if (!isset($data['rows']) || !is_array($data['rows']) || !yf_is_list($data['rows'])) {
         throw new InvalidArgumentException('rows 必须是数组');
@@ -594,7 +617,21 @@ function yf_normalize_payload(array $data): array
         }
         $rows[] = yf_normalize_row($type, $row, (int)$index);
     }
-    return array('type' => $type, 'batch_id' => $batch, 'rows' => $rows);
+    $out = array('type' => $type, 'batch_id' => $batch, 'rows' => $rows);
+    if ($type === 'feature') {
+        if (!isset($data['items']) || !is_array($data['items']) || !yf_is_list($data['items'])) {
+            throw new InvalidArgumentException('feature 批次必须带 items 数组');
+        }
+        if (count($data['items']) > YF_ROWS_MAX) {
+            throw new InvalidArgumentException('items 单次最多 ' . YF_ROWS_MAX . ' 个品号');
+        }
+        $items = array();
+        foreach ($data['items'] as $index => $code) {
+            $items[] = yf_text((string)$code, YF_CODE_MAX, 'items 第 ' . ($index + 1) . ' 个品号', true);
+        }
+        $out['items'] = array_values(array_unique($items));
+    }
+    return $out;
 }
 
 function yf_optional_decimal_key(array $row, array &$out, string $key, string $field, ?string $nullDefault = null): void
@@ -650,6 +687,23 @@ function yf_normalize_row(string $type, array $row, int $index): array
         yf_optional_decimal_key($row, $out, 'scrap_rate', $at . '损耗率', '0');
         return $out;
     }
+    if ($type === 'feature') {
+        $amount = yf_decimal_in($row['amount'] ?? '0', $at . '特征金额');
+        if (yf_decimal_is_zero($amount)) {
+            throw new InvalidArgumentException($at . '特征金额为 0 时不推送');
+        }
+        $sort = isset($row['sort_no']) ? (int)$row['sort_no'] : 0;
+        if ($sort < 0 || $sort > 999999) {
+            throw new InvalidArgumentException($at . 'sort_no 超出范围');
+        }
+        return array(
+            'item_code' => yf_text((string)($row['item_code'] ?? ''), YF_CODE_MAX, $at . '品号', true),
+            'feature_code' => yf_text((string)($row['feature_code'] ?? ''), 40, $at . '特征代号', true),
+            'feature_name' => yf_text((string)($row['feature_name'] ?? ''), YF_NAME_MAX, $at . '特征名称', false, true),
+            'amount' => $amount,
+            'sort_no' => $sort,
+        );
+    }
     $period = yf_text((string)($row['period'] ?? ''), YF_PERIOD_MAX, $at . '期间', true);
     if (!preg_match('/^[0-9A-Za-z_-]+$/', $period)) {
         throw new InvalidArgumentException($at . '期间格式不正确');
@@ -674,7 +728,7 @@ function yf_tables_ready(PDO $pdo): bool
     foreach ($stmt->fetchAll(PDO::FETCH_COLUMN) as $name) {
         $have[strtolower((string)$name)] = true;
     }
-    foreach (array('yf_invmb', 'yf_bommd', 'yf_cstmb', 'yf_sync_batches') as $table) {
+    foreach (array('yf_invmb', 'yf_bommd', 'yf_cstmb', 'yf_sync_batches', 'yf_item_feature') as $table) {
         if (empty($have[$table])) {
             return false;
         }
@@ -724,6 +778,9 @@ function yf_apply(PDO $pdo, array $payload, string $ip): array
         } elseif ($type === 'bommd') {
             list($upserted, $deduped) = yf_apply_bom($pdo, $rows, $batch, $now);
             $skipped = 0;
+        } elseif ($type === 'feature') {
+            list($upserted, $deduped) = yf_apply_features($pdo, $payload, $batch, $now);
+            $skipped = 0;
         } else {
             list($upserted, $skipped, $deduped) = yf_apply_costs($pdo, $rows, $batch, $now);
         }
@@ -744,6 +801,101 @@ function yf_apply(PDO $pdo, array $payload, string $ip): array
         'skipped' => $skipped,
         'deduped' => $deduped,
     );
+}
+
+function yf_apply_features(PDO $pdo, array $payload, string $batch, string $now): array
+{
+    $rows = $payload['rows'];
+    $items = $payload['items'] ?? array();
+    if (!$items) {
+        throw new InvalidArgumentException('feature 批次 items 不能为空');
+    }
+    $place = implode(',', array_fill(0, count($items), '?'));
+    $pdo->prepare('DELETE FROM yf_item_feature WHERE item_code IN (' . $place . ')')->execute($items);
+    $picked = array();
+    foreach ($rows as $row) {
+        $key = $row['item_code'] . "\n" . $row['feature_code'];
+        $picked[$key] = $row;
+    }
+    foreach ($picked as $row) {
+        yf_upsert($pdo, 'yf_item_feature', array('item_code' => true, 'feature_code' => true), array(
+            'item_code' => $row['item_code'],
+            'feature_code' => $row['feature_code'],
+            'feature_name' => $row['feature_name'],
+            'amount' => $row['amount'],
+            'sort_no' => $row['sort_no'],
+            'synced_at' => $now,
+            'batch_id' => $batch,
+        ));
+    }
+    return array(count($picked), count($rows) - count($picked));
+}
+
+function yf_features_for_codes(PDO $pdo, array $codes): array
+{
+    $codes = array_values(array_unique(array_filter($codes, function ($c) {
+        return $c !== '';
+    })));
+    if (!$codes) {
+        return array();
+    }
+    $out = array();
+    foreach ($codes as $code) {
+        $out[$code] = array();
+    }
+    $chunks = array_chunk($codes, 200);
+    foreach ($chunks as $chunk) {
+        $place = implode(',', array_fill(0, count($chunk), '?'));
+        $stmt = $pdo->prepare('SELECT item_code, feature_code, feature_name, amount, sort_no FROM yf_item_feature WHERE item_code IN (' . $place . ') ORDER BY item_code, sort_no, feature_code');
+        $stmt->execute($chunk);
+        foreach ($stmt as $row) {
+            $code = (string)$row['item_code'];
+            if (!isset($out[$code])) {
+                $out[$code] = array();
+            }
+            $out[$code][] = array(
+                'feature_code' => (string)$row['feature_code'],
+                'feature_name' => (string)$row['feature_name'],
+                'amount' => (string)$row['amount'],
+                'sort_no' => (int)$row['sort_no'],
+            );
+        }
+    }
+    return $out;
+}
+
+function yf_feature_rows_sum(array $rows): ?string
+{
+    $sum = null;
+    foreach ($rows as $row) {
+        $amount = $row['amount'] ?? null;
+        if ($amount === null || $amount === '') {
+            continue;
+        }
+        $norm = yf_decimal_in((string)$amount, '特征金额');
+        if (yf_decimal_is_zero($norm)) {
+            continue;
+        }
+        $sum = $sum === null ? $norm : yf_decimal_add($sum, $norm);
+    }
+    return $sum;
+}
+
+/** MB059、MB060 任一为非零数值时，认为制费/加工已写入会计栏，不再加特征金额。 */
+function yf_should_add_feature_costs(?array $item): bool
+{
+    if (!$item) {
+        return false;
+    }
+    foreach (array('std_mfg', 'std_subcontract') as $key) {
+        if (!array_key_exists($key, $item) || $item[$key] === null || $item[$key] === '') {
+            continue;
+        }
+        if (!yf_decimal_is_zero(yf_decimal_in((string)$item[$key], $key))) {
+            return false;
+        }
+    }
+    return true;
 }
 
 function yf_apply_items(PDO $pdo, array $rows, string $batch, string $now): array
@@ -845,18 +997,31 @@ function yf_sum_present(array $parts): ?string
     return $sum;
 }
 
-function yf_line_material(array $child): array
+function yf_line_material(array $child, array $featureRows = array()): array
 {
     $effective = yf_effective_qty($child['qty'] ?? '0', $child['base_qty'] ?? null, $child['scrap_rate'] ?? null);
     $material = yf_extend_unit($child['std_material'] ?? null, $effective, '单位标准材料成本');
     $mfg = yf_extend_unit($child['std_mfg'] ?? null, $effective, '单位标准制费');
     $process = yf_extend_unit($child['std_subcontract'] ?? null, $effective, '单位标准加工');
+    $featureExt = null;
+    if (yf_should_add_feature_costs($child) && $featureRows) {
+        $featureUnit = yf_feature_rows_sum($featureRows);
+        if ($featureUnit !== null) {
+            $featureExt = yf_decimal_mul($featureUnit, $effective);
+        }
+    }
+    $baseAmount = yf_sum_present(array($material, $mfg, $process));
+    $amount = $baseAmount;
+    if ($featureExt !== null) {
+        $amount = $amount === null ? $featureExt : yf_decimal_add($amount, $featureExt);
+    }
     return array(
         'effective_qty' => $effective,
         'material_cost' => $material['amount'],
         'mfg_cost' => $mfg['amount'],
         'process_cost' => $process['amount'],
-        'amount' => yf_sum_present(array($material, $mfg, $process)),
+        'feature_cost' => $featureExt,
+        'amount' => $amount,
         'std_missing' => $material['missing'],
         'mfg_missing' => $mfg['missing'],
         'process_missing' => $process['missing'],
@@ -888,12 +1053,14 @@ function yf_rollup_bucket(array $lines, string $amountKey, string $missingKey, s
     return array('total' => $sum, 'missing' => $missing, 'zero' => $zero);
 }
 
-function yf_material_rollup(array $children): array
+function yf_material_rollup(array $children, array $featuresByCode = array()): array
 {
     $phantom = 0;
     $lines = array();
     foreach ($children as $child) {
-        $line = yf_line_material($child);
+        $code = (string)($child['component_code'] ?? '');
+        $feat = $featuresByCode[$code] ?? array();
+        $line = yf_line_material($child, $feat);
         $lines[] = $line;
         $attr = strtoupper(trim((string)($child['item_attr'] ?? '')));
         if ($attr === 'Y') {
@@ -926,7 +1093,7 @@ function yf_material_rollup(array $children): array
     );
 }
 
-function yf_std_total(?array $item): array
+function yf_std_total(?array $item, array $featureRows = array()): array
 {
     $parts = array(
         'std_material' => '材料',
@@ -941,6 +1108,9 @@ function yf_std_total(?array $item): array
             'absent' => array_values($parts),
             'parts' => $values,
             'labor' => null,
+            'feature_total' => null,
+            'features_applied' => false,
+            'feature_lines' => array(),
         );
     }
     $sum = '0.000000';
@@ -960,12 +1130,29 @@ function yf_std_total(?array $item): array
     if (array_key_exists('std_labor', $item) && $item['std_labor'] !== null && $item['std_labor'] !== '') {
         $labor = yf_decimal_in((string)$item['std_labor'], '人工');
     }
+    $featureTotal = null;
+    $featuresApplied = false;
+    if (yf_should_add_feature_costs($item) && $featureRows) {
+        $featureTotal = yf_feature_rows_sum($featureRows);
+        if ($featureTotal !== null) {
+            $featuresApplied = true;
+            if ($present) {
+                $sum = yf_decimal_add($sum, $featureTotal);
+            } else {
+                $sum = $featureTotal;
+                $present = array('特征');
+            }
+        }
+    }
     return array(
         'total' => $present ? $sum : null,
         'present' => $present,
         'absent' => $absent,
         'parts' => $values,
         'labor' => $labor,
+        'feature_total' => $featureTotal,
+        'features_applied' => $featuresApplied,
+        'feature_lines' => $featuresApplied ? $featureRows : array(),
     );
 }
 
@@ -1053,6 +1240,7 @@ function yf_mirror_synced_at(PDO $pdo): string
         SELECT synced_at FROM yf_invmb
         UNION ALL SELECT synced_at FROM yf_bommd
         UNION ALL SELECT synced_at FROM yf_cstmb
+        UNION ALL SELECT synced_at FROM yf_item_feature
     ) AS yf_times');
     $value = $stmt->fetchColumn();
     return $value ? (string)$value : '';
@@ -1073,7 +1261,7 @@ function yf_search(PDO $pdo, string $q, int $limit = 50): array
             ORDER BY i.synced_at DESC, i.item_code
             LIMIT ' . $limit;
         $rows = $pdo->query($sql)->fetchAll();
-        return array('ready' => true, 'rows' => $rows);
+        return yf_search_attach_features($pdo, array('ready' => true, 'rows' => $rows));
     }
     $like = yf_like($q);
     $escape = yf_like_escape_sql($pdo);
@@ -1094,7 +1282,26 @@ function yf_search(PDO $pdo, string $q, int $limit = 50): array
         LIMIT ' . $limit;
     $stmt = $pdo->prepare($sql);
     $stmt->execute(array($like, $like, $like, $q));
-    return array('ready' => true, 'rows' => $stmt->fetchAll());
+    return yf_search_attach_features($pdo, array('ready' => true, 'rows' => $stmt->fetchAll()));
+}
+
+function yf_search_attach_features(PDO $pdo, array $result): array
+{
+    $rows = $result['rows'] ?? array();
+    if (!$rows) {
+        return $result;
+    }
+    $codes = array();
+    foreach ($rows as $row) {
+        $codes[] = (string)$row['item_code'];
+    }
+    $map = yf_features_for_codes($pdo, $codes);
+    foreach ($rows as $i => $row) {
+        $code = (string)$row['item_code'];
+        $rows[$i]['feature_rows'] = $map[$code] ?? array();
+    }
+    $result['rows'] = $rows;
+    return $result;
 }
 
 function yf_detail(PDO $pdo, string $code): ?array
@@ -1146,11 +1353,27 @@ function yf_detail(PDO $pdo, string $code): ?array
         return $value !== '';
     });
     rsort($times);
-    $rollup = yf_material_rollup($children);
+    $featureCodes = array($code);
+    foreach ($children as $child) {
+        $featureCodes[] = (string)$child['component_code'];
+    }
+    $featuresByCode = yf_features_for_codes($pdo, $featureCodes);
+    $itemFeatures = $featuresByCode[$code] ?? array();
+    $featTime = $pdo->prepare('SELECT MAX(synced_at) FROM yf_item_feature WHERE item_code = ?');
+    $featTime->execute(array($code));
+    $featSynced = $featTime->fetchColumn();
+    if ($featSynced) {
+        $times[] = (string)$featSynced;
+    }
+    $rollup = yf_material_rollup($children, $featuresByCode);
     foreach ($children as $i => $_child) {
-        foreach (array('effective_qty', 'material_cost', 'mfg_cost', 'process_cost', 'amount', 'std_missing', 'mfg_missing', 'process_missing') as $key) {
-            $children[$i][$key] = $rollup['lines'][$i][$key];
+        foreach (array('effective_qty', 'material_cost', 'mfg_cost', 'process_cost', 'feature_cost', 'amount', 'std_missing', 'mfg_missing', 'process_missing') as $key) {
+            if (array_key_exists($key, $rollup['lines'][$i])) {
+                $children[$i][$key] = $rollup['lines'][$i][$key];
+            }
         }
+        $cc = (string)$_child['component_code'];
+        $children[$i]['feature_rows'] = $featuresByCode[$cc] ?? array();
     }
     return array(
         'code' => $code,
@@ -1158,6 +1381,7 @@ function yf_detail(PDO $pdo, string $code): ?array
         'cost' => $costRow,
         'children' => $children,
         'parents' => $parents,
+        'features' => $itemFeatures,
         'synced_at' => $times ? $times[0] : '',
         'rollup' => array(
             'material_total' => $rollup['material_total'],
@@ -1172,6 +1396,6 @@ function yf_detail(PDO $pdo, string $code): ?array
             'zero_process' => $rollup['zero_process'],
             'phantom' => $rollup['phantom'],
         ),
-        'std_total' => yf_std_total($itemRow),
+        'std_total' => yf_std_total($itemRow, $itemFeatures),
     );
 }
