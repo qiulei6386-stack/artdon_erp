@@ -498,6 +498,7 @@ body{background:#f6f8fb}
       <button id="tabDashboard" class="tab active" onclick="showPage('dashboard')">BOM总览</button>
       <button id="tabEdit" class="tab" onclick="showPage('edit')">编辑成本单</button>
       <button id="tabLibrary" class="tab" onclick="showPage('library')">成本总表 / 明细库</button>
+      <button id="tabYifei" class="tab" type="button" onclick="goModule('yifei_sync/index.php')">易飞数据</button>
       <button id="tabMaterials" class="tab" onclick="showPage('materials')">共享物料库</button>
       <button id="tabUsers" class="tab" onclick="showPage('users')">用户管理</button>
     </div>
@@ -521,6 +522,7 @@ body{background:#f6f8fb}
         <button class="ok" onclick="newProjectFromDashboard()">新建 BOM</button>
         <button class="ghost" onclick="openNamingBomModal('create')">从命名型号新建</button>
         <button class="ghost" onclick="loadAll()">刷新</button>
+        <button class="ghost" type="button" onclick="goModule('yifei_sync/index.php')">易飞数据</button>
         <button class="ghost" onclick="exportDashboardCSV()">导出当前筛选 CSV</button>
       </div>
     </div>

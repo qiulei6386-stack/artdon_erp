@@ -1,5 +1,15 @@
 # Artdon ERP 工作上下文
 
+## 2026-10-19：易飞只读同步 P1
+
+- 本次完成：广州增加易飞只读接收接口、`yf_*` 镜像表和中文查询页；仓库里另有 Windows 代理骨架。本地易飞（SQL Server 库 AT）只读查询后用 HTTPS 推送，广州不连接易飞，也不写回。字段只使用已核实的 INVMB（MB001 品号、MB002 品名、MB003 规格）、BOMMD（MD001 主件、MD003 元件、MD006 用量）、CSTMB（MB007 品号、MB002 期间、MB004 单据号、MB005 成本）。不使用 CSTLA、CSTMC。每个品号只保留最新期间的成本；较旧期间不会覆盖。char 尾部空格按 RTRIM 处理。
+- 查询页 `yifei_sync/index.php` 沿用 BOM 登录（`bom.view`）。没有 `bom.cost_view` 时页面不输出成本数字。入口在 BOM 页页签和总览按钮、首页 BOM 卡片下的「易飞数据」，以及首页「研发 / 成本 / 生产」里的只读卡片。
+- 修改文件：`yifei_sync/`（`api.php`、`migrate.php`、`lib.php`、`page.php`、`index.php`、`config.example.php`、`README.md`）、`yifei_agent/`（`sync.py`、`config.example.json`、`requirements.txt`、`README.md`、`fixtures/sample_batches.json`）、`bom.php`、`index.php`、`.gitignore`、`tests/yifei_sync_contract.php`、`tools/ci_php_checks.sh`、本文件。
+- 检查结果：`php tests/yifei_sync_contract.php` 通过。其中包含建表脚本、幂等 upsert、尾部空格、BOM 用量合并、较旧期间不覆盖样例成本 27.564722、按品号和品名查询、无成本权限不输出金额、错误密钥 401、MySQL 上 `php yifei_sync/migrate.php`、curl 假数据、`python3 yifei_agent/sync.py --push-file`。未登录打开查询页会 302 到 `login.php`。浏览器里用样例数据查了品号 `A4-2-01-4286`、品名「散热器」、不存在的关键词，以及约 390px 窄屏。
+- 服务器部署情况：按本次要求不部署，也没有把分支同步到 `/www/wwwroot/Artdon/artdon_erp/`。合并进 `main` 之后，正式目录由既有 GitHub Actions 快进；快进后再执行 `php yifei_sync/migrate.php`，并把共享密钥写到仓库外的 `/www/server/artdon_secrets/yifei_sync.php`。密钥不要提交。
+- Git 提交号及推送状态：见本分支提交。正式目录未快进。
+- 尚未完成：易飞那台 Windows 机器安装只读账号并填写本机 `yifei_agent/config.json` 后才能真正推送。本阶段不删除易飞里已经去掉的 BOM 行，也不做反写。增量水位默认关闭，需现场确认 `MODI_DATE` / `CREATE_DATE` 后再开。
+
 ## 2026-10-16：旧客户中心高级筛选 · 负责人两种匹配
 
 - 上一步：邮箱系统第一批（一），`centers/mail/`，提交 `13582a3`。本次只改旧版 `crm.php` 客户中心高级筛选，不改新客户中心。

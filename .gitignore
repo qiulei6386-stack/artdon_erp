@@ -48,3 +48,9 @@ id_ed25519*
 
 # 新系统配置（数据库连接，不进 Git）
 centers/config.php
+
+# 易飞只读同步：密钥与本机代理配置不入库
+yifei_sync/config.local.php
+yifei_agent/config.json
+yifei_agent/state/
+yifei_agent/logs/
