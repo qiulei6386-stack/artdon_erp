@@ -42,6 +42,22 @@ BOMMD_EXTRA = (
     ("MD008", "scrap_rate", "num", "confirmed"),
 )
 
+# 录入品号信息「特征数据」。栏位标题来自 DSCLB；金额在 INVMB 数值列（多为 UDF*）。
+FEATURE_CLASS_IDS = (
+    "INVMI02",
+    "INVI02",
+    "INVI05",
+    "INVMB",
+    "INVMI01",
+)
+FEATURE_OWNER_HINTS = ("INVMB", "INVMI02", "INVI02")
+CAPTION_IGNORE = re.compile(
+    r"^(?:自订栏位|自訂欄位|自定义字段|用户自定义|使用者自訂|預留欄位|预留字段|"
+    r"特性\d+|特殊特性\d+)$",
+    re.IGNORECASE,
+)
+UDF_COLUMN = re.compile(r"^UDF\d+$", re.IGNORECASE)
+
 
 def assert_ident(name: str) -> str:
     if not IDENT.fullmatch(name or ""):
@@ -183,7 +199,301 @@ def default_queries():
         "invmb": invmb_sql()[0],
         "bommd": bommd_sql()[0],
         "cstmb": cstmb_sql()[0],
+        "feature": feature_sql_template(),
     }
+
+
+def feature_sql_template() -> str:
+    return (
+        "-- 特征数据：INVMB 数值栏 + DSCLB.Caption 对应列名（见 README）。\n"
+        "-- 运行期按 INFORMATION_SCHEMA 与 DSCLB 生成列清单，不在此固定 UDF 编号。\n"
+        "SELECT RTRIM(MB001) AS item_code FROM INVMB WHERE RTRIM(ISNULL(MB001, '')) <> ''"
+    )
+
+
+def caption_usable(name: str, column: str) -> bool:
+    text = rtrim_text(name)
+    col = (column or "").strip().upper()
+    if not text or not col:
+        return False
+    if text.upper() == col:
+        return False
+    if CAPTION_IGNORE.match(text):
+        return False
+    for bad in ("用户自定义字段", "使用者自訂欄位", "自定义字段"):
+        if bad in text:
+            return False
+    return True
+
+
+def dsclb_caption_sql(database: str) -> str:
+    table = ("%s.dbo.DSCLB" % database) if database else "DSCLB"
+    return (
+        "-- DSCLB：LB005=Caption，LB006=列名，LB009 简体 / LB008 繁体。\n"
+        "SELECT\n"
+        "    RTRIM(ISNULL(LB001, '')) AS lb001,\n"
+        "    RTRIM(LB006) AS column_name,\n"
+        "    RTRIM(ISNULL(LB002, '')) AS class_id,\n"
+        "    RTRIM(ISNULL(LB004, '')) AS owner_name,\n"
+        "    RTRIM(ISNULL(LB009, '')) AS caption_chs,\n"
+        "    RTRIM(ISNULL(LB008, '')) AS caption_cht\n"
+        "FROM %s\n"
+        "WHERE RTRIM(ISNULL(LB005, '')) = 'Caption'\n"
+        "  AND RTRIM(ISNULL(LB006, '')) <> ''"
+    ) % table
+
+
+def load_dsclb_captions(conn, cfg: dict) -> dict:
+    """返回 {COLUMN: caption}，优先客户自订 LB001=3，再客制/预设。"""
+    databases = []
+    feat_cfg = cfg.get("features") or {}
+    if feat_cfg.get("dsclb_database"):
+        databases.append(str(feat_cfg["dsclb_database"]).strip())
+    databases.extend(["DSCSYS", "AT"])
+    merged = {}
+    priority = {}
+    for db in databases:
+        if not db:
+            continue
+        sql = dsclb_caption_sql(db)
+        try:
+            assert_read_only(sql)
+            rows = fetch_all(conn, sql)
+        except Exception as exc:
+            logging.warning("读取 %s.DSCLB 失败：%s", db, exc)
+            continue
+        for row in rows:
+            col = rtrim_text(row.get("column_name")).upper()
+            if not col:
+                continue
+            class_id = rtrim_text(row.get("class_id"))
+            owner = rtrim_text(row.get("owner_name"))
+            if class_id and class_id not in FEATURE_CLASS_IDS and owner not in FEATURE_OWNER_HINTS:
+                continue
+            cap = rtrim_text(row.get("caption_chs")) or rtrim_text(row.get("caption_cht"))
+            if not caption_usable(cap, col):
+                continue
+            kind_pri = 0
+            lb001 = rtrim_text(row.get("lb001")) if "lb001" in row else ""
+            if lb001 == "3":
+                kind_pri = 3
+            elif lb001 == "2":
+                kind_pri = 2
+            else:
+                kind_pri = 1
+            old = priority.get(col, -1)
+            if kind_pri >= old:
+                priority[col] = kind_pri
+                merged[col] = cap
+        if merged:
+            logging.info("DSCLB 自 %s 载入 %s 个特征栏标题", db, len(merged))
+            break
+    return merged
+
+
+def config_feature_columns(cfg: dict) -> dict:
+    out = {}
+    for entry in (cfg.get("features") or {}).get("columns") or []:
+        if not isinstance(entry, dict):
+            continue
+        col = rtrim_text(entry.get("column")).upper()
+        name = rtrim_text(entry.get("name"))
+        if not col or not name:
+            continue
+        out[col] = name
+    return out
+
+
+def invmb_column_types(conn) -> dict:
+    sql = (
+        "SELECT COLUMN_NAME, DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS "
+        "WHERE TABLE_NAME = 'INVMB' AND TABLE_SCHEMA = SCHEMA_NAME()"
+    )
+    types = {}
+    try:
+        for row in fetch_all(conn, sql):
+            col = str(row.get("COLUMN_NAME") or "").strip().upper()
+            if col:
+                types[col] = str(row.get("DATA_TYPE") or "").lower()
+    except Exception as exc:
+        logging.warning("读取 INVMB 类型失败：%s", exc)
+    return types
+
+
+def numeric_invmb_types() -> set:
+    return {
+        "decimal",
+        "numeric",
+        "float",
+        "real",
+        "money",
+        "smallmoney",
+        "int",
+        "bigint",
+        "smallint",
+        "tinyint",
+    }
+
+
+def discover_feature_fields(conn, cfg: dict) -> list:
+    """[(column, caption, sort_index), ...]"""
+    present = present_columns(conn, "INVMB") or set()
+    types = invmb_column_types(conn)
+    captions = load_dsclb_captions(conn, cfg)
+    captions.update(config_feature_columns(cfg))
+    fields = []
+    sort = 0
+    for col in sorted(present):
+        cap = captions.get(col)
+        if not cap:
+            continue
+        dtype = types.get(col, "")
+        is_udf = bool(UDF_COLUMN.match(col))
+        if dtype in numeric_invmb_types():
+            if is_udf or caption_usable(cap, col):
+                assert_ident(col)
+                fields.append((col, cap, sort))
+                sort += 1
+            continue
+        if dtype in ("varchar", "nvarchar", "char", "nchar") and caption_usable(cap, col):
+            assert_ident(col)
+            fields.append((col, cap, sort))
+            sort += 1
+    if not fields:
+        logging.warning("未发现可同步的特征金额栏；请检查 DSCLB 权限或 features.columns 配置")
+    else:
+        logging.info("特征栏：%s", ", ".join("%s(%s)" % (c, n) for c, n, _ in fields[:12]) + ("..." if len(fields) > 12 else ""))
+    return fields
+
+
+def feature_invmb_sql(fields, date_columns=None, watermark: str = "", present=None):
+    date_columns = list(date_columns or [])
+    if not fields:
+        return "SELECT RTRIM(MB001) AS item_code FROM INVMB WHERE 1=0", [], []
+    select_parts = ["RTRIM(MB001) AS item_code"]
+    for col, _cap, _sort in fields:
+        select_parts.append("%s AS f_%s" % (col, col))
+    params = []
+    for col in date_columns:
+        assert_ident(col)
+        select_parts.append("RTRIM(ISNULL(%s, '')) AS wm_%s" % (col, col))
+    sql = (
+        "-- 特征数据金额：INVMB 用户自定义/客制 Caption 列。\n"
+        "SELECT\n    " + ",\n    ".join(select_parts) + "\n"
+        "FROM INVMB\n"
+        "WHERE RTRIM(ISNULL(MB001, '')) <> ''"
+    )
+    if watermark and date_columns:
+        parts = []
+        for col in date_columns:
+            parts.append("RTRIM(ISNULL(%s, '')) > ?" % col)
+            params.append(watermark)
+        sql += "\n  AND (" + " OR ".join(parts) + ")"
+    return sql, params, []
+
+
+def invmb_rows_to_features(rows: list, fields: list) -> tuple:
+    """返回 (feature_rows, items_touched)"""
+    feature_rows = []
+    items = []
+    for row in rows:
+        code = rtrim_text(row.get("item_code"))
+        if not code:
+            continue
+        items.append(code)
+        for col, cap, sort_no in fields:
+            raw = row.get("f_" + col)
+            if raw is None:
+                continue
+            amount = optional_number(raw)
+            if amount is None or amount == "0":
+                continue
+            feature_rows.append({
+                "item_code": code,
+                "feature_code": col,
+                "feature_name": cap,
+                "amount": amount,
+                "sort_no": sort_no,
+            })
+    return feature_rows, items
+
+
+def chunk_feature_payload(feature_rows: list, all_items: list, max_rows: int):
+    """同一品号的特征行不拆到不同批次。items 含本批扫描到的全部品号（无特征也要列出以便清空）。 """
+    max_rows = max(1, min(int(max_rows), 500))
+    by_item = {}
+    for row in feature_rows:
+        by_item.setdefault(row["item_code"], []).append(row)
+    order = []
+    seen = set()
+    for code in all_items:
+        text = rtrim_text(code)
+        if text and text not in seen:
+            seen.add(text)
+            order.append(text)
+    for code in by_item:
+        if code not in seen:
+            order.append(code)
+    batches = []
+    cur_rows = []
+    cur_items = []
+
+    def flush():
+        nonlocal cur_rows, cur_items
+        if cur_items:
+            batches.append((list(cur_items), list(cur_rows)))
+        cur_rows = []
+        cur_items = []
+
+    for code in order:
+        rows = by_item.get(code, [])
+        add_rows = len(rows)
+        if cur_items and (len(cur_rows) + add_rows > max_rows or len(cur_items) + 1 > max_rows):
+            flush()
+        cur_items.append(code)
+        cur_rows.extend(rows)
+    flush()
+    if not batches and order:
+        batches.append((order, []))
+    return batches
+
+
+def push_feature_payload(cfg: dict, batch_prefix: str, index: int, items: list, rows: list) -> None:
+    payload = {
+        "type": "feature",
+        "batch_id": "%s-feature-%d" % (batch_prefix, index),
+        "items": items,
+        "rows": rows,
+    }
+    push_payload(cfg, payload)
+
+
+def sync_features(cfg: dict, conn, full: bool, state: dict, state_path: Path, stamp: str) -> None:
+    fields = discover_feature_fields(conn, cfg)
+    if not fields:
+        return
+    columns = incremental_columns(cfg, full)
+    present = present_columns(conn, "INVMB")
+    watermark = "" if full else str(state.get("feature") or "")
+    sql, params, _skipped = feature_invmb_sql(fields, columns, watermark, present)
+    logging.info("读取 feature")
+    rows = fetch_all(conn, sql, params)
+    watermark_next = max_watermark(rows, columns) if columns else ""
+    feature_rows, _items = invmb_rows_to_features(rows, fields)
+    size = int(cfg.get("batch_size") or 200)
+    touched = list(dict.fromkeys(
+        rtrim_text(r.get("item_code")) for r in rows if rtrim_text(r.get("item_code"))
+    ))
+    if not touched:
+        logging.info("feature 没有品号行")
+    else:
+        batches = chunk_feature_payload(feature_rows, touched, size)
+        for idx, (batch_items, batch_rows) in enumerate(batches, start=1):
+            push_feature_payload(cfg, stamp, idx, batch_items, batch_rows)
+        logging.info("feature 推送完成，%s 个品号，%s 行特征", len(touched), len(feature_rows))
+    if watermark_next:
+        state["feature"] = watermark_next
+        write_state(state_path, state)
 
 
 def rtrim_text(value) -> str:
@@ -566,6 +876,7 @@ def sync_database(cfg: dict, full: bool) -> None:
             if watermark_next:
                 state[kind] = watermark_next
                 write_state(state_path, state)
+        sync_features(cfg, conn, full, state, state_path, stamp)
     finally:
         conn.close()
 
@@ -583,6 +894,15 @@ def push_file(cfg: dict, path: Path) -> None:
         rows = batch.get("rows") or []
         if kind == "bommd":
             rows = collapse_bom(rows)
+        elif kind == "feature":
+            payload = {
+                "type": kind,
+                "batch_id": batch.get("batch_id") or time.strftime("%Y%m%d%H%M%S") + "-" + str(kind) + "-" + str(index),
+                "items": batch.get("items") or [],
+                "rows": rows,
+            }
+            push_payload(cfg, payload)
+            continue
         else:
             rows = [public_row(kind, row) for row in rows]
         payload = {
@@ -636,6 +956,20 @@ def self_check() -> int:
         return 1
     if missing:
         print("缺少 " + ", ".join(missing))
+        return 1
+    if not caption_usable("数控开料", "UDF51"):
+        print("特征标题过滤失败")
+        return 1
+    if caption_usable("用户自定义字段7", "UDF57") or caption_usable("特性01", "MB546"):
+        print("应忽略默认特征标题")
+        return 1
+    chunks = chunk_feature_payload(
+        [{"item_code": "A", "feature_code": "U1", "feature_name": "n", "amount": "1", "sort_no": 0}],
+        ["A", "B"],
+        500,
+    )
+    if not chunks or chunks[0][0] != ["A", "B"] or len(chunks[0][1]) != 1:
+        print("特征批次应带上全部 items 且保留特征行")
         return 1
     sample = [{"parent_code": "A ", "component_code": "B ", "qty": 1}, {"parent_code": "A", "component_code": "B", "qty": "2"}]
     folded = collapse_bom(sample)

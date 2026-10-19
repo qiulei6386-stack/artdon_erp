@@ -1,5 +1,14 @@
 # Artdon ERP 工作上下文
 
+## 2026-10-19：易飞特征数据加工费同步
+
+- 本次完成：定位录入品号「特征数据」为 INVMB 用户自定义数值列（多为 UDF*）+ DSCSYS/AT `DSCLB` Caption 标题；新增镜像表 `yf_item_feature` 与代理 `feature` 批次（`items`+`rows` 替换语义）。广州页「成本金额」在 MB059、MB060 均为空或 0 时加上特征合计，避免与已回写制费/加工双计。粗胚 `A4-2-01-0254` 合约目标 4.5626（3.18+0.05+1.095+0.2376）。明确不用 INVMI/INVMJ 属性码、BOMME/BOMMF。
+- 修改文件：`yifei_agent/sync.py`、`yifei_agent/config.example.json`、`yifei_agent/README.md`、`yifei_sync/lib.php`、`yifei_sync/page.php`、`yifei_sync/api.php`、`yifei_sync/migrate.php`、`yifei_sync/README.md`、`tests/yifei_sync_contract.php`、本文件。
+- 检查结果：`php -l` 通过相关 PHP；`python3 yifei_agent/sync.py --self-check` 通过；`php tests/yifei_sync_contract.php` 通过（含 A4-2-01-0254、双计防护、特征清空）。未做屏幕录像。
+- 服务器部署情况：按本次要求不部署 `/www/wwwroot/Artdon/artdon_erp/`。合并后执行 `php yifei_sync/migrate.php`；Windows 覆盖 `sync.py` 后 `py -3.13 sync.py --full`；DSCSYS 需给只读账号 `DSCLB` SELECT。
+- Git 提交号及推送状态：见分支 `cursor/yifei-feature-cost-c9b3` 最新提交。
+- 尚未完成：现场核对 UDF 列号与 DSCLB 标题是否与配置一致；用 `bom.cost_view` 打开真实 `A4-2-01-0254` 对照易飞页头单位成本约 4.573。
+
 ## 2026-10-19：易飞成本金额改为材料+制费+加工
 
 - 本次完成：查询页用来和易飞报表对照的主数字改为成本金额，等于单位标准材料 + 单位标准制费 + 单位标准加工（MB057+MB059+MB060）。人工、本阶栏和 CSTMB 账上最新单位成本都保留，但不再加进这个金额，CSTMB 也不再红字强调，并标明「不是成本金额」。列表同样把成本金额放在主列。BOM 表尾增加材料、制费、加工、成本金额四列单阶合计。

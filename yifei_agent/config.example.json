@@ -20,5 +20,13 @@
   "incremental": {
     "enabled": false,
     "date_columns": ["MODI_DATE", "CREATE_DATE"]
+  },
+  "features": {
+    "dsclb_database": "DSCSYS",
+    "columns": [
+      {"column": "UDF51", "name": "数控开料"},
+      {"column": "UDF52", "name": "数控加工"},
+      {"column": "UDF53", "name": "五金钻孔"}
+    ]
   }
 }

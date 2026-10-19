@@ -11,7 +11,7 @@ try {
         yf_json(405, array(
             'ok' => false,
             'error' => 'METHOD_NOT_ALLOWED',
-            'message' => '请用 POST JSON，type 为 invmb、bommd 或 cstmb',
+            'message' => '请用 POST JSON，type 为 invmb、bommd、cstmb 或 feature',
         ));
     }
     $length = isset($_SERVER['CONTENT_LENGTH']) ? (int)$_SERVER['CONTENT_LENGTH'] : 0;

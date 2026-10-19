@@ -19,6 +19,6 @@ try {
     exit(1);
 }
 
-echo "易飞镜像表已就绪：yf_invmb、yf_bommd、yf_cstmb、yf_sync_batches\n";
-echo "已补上单位标准材料成本等会计栏位，以及 BOM 底数、损耗率。\n";
+echo "易飞镜像表已就绪：yf_invmb、yf_bommd、yf_cstmb、yf_item_feature、yf_sync_batches\n";
+echo "已补上单位标准材料成本等会计栏位、BOM 底数/损耗率，以及特征工艺明细表 yf_item_feature。\n";
 echo "再次执行是幂等的，不会清空已同步的数据。\n";

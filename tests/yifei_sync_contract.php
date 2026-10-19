@@ -58,7 +58,7 @@ yf_check(strpos($agentReadme, '10') !== false && strpos($agentReadme, '不写易
 yf_check(strpos($syncReadme, 'migrate.php') !== false && strpos($syncReadme, '/www/server/artdon_secrets/yifei_sync.php') !== false, '广州说明包含建表和仓库外密钥');
 
 $schema = yf_mysql_schema_sql();
-foreach (array('yf_invmb', 'yf_bommd', 'yf_cstmb', 'yf_sync_batches', 'MB001', 'MB007', 'MD001') as $needle) {
+foreach (array('yf_invmb', 'yf_bommd', 'yf_cstmb', 'yf_item_feature', 'yf_sync_batches', 'MB001', 'MB007', 'MD001') as $needle) {
     yf_check(strpos($schema, $needle) !== false, '建表脚本包含 ' . $needle);
 }
 yf_check(stripos($schema, 'CSTLA') === false && stripos($schema, 'DROP TABLE') === false, '建表脚本不删表、不建未核实成本表');
@@ -146,6 +146,9 @@ $hidden = yf_render_page(array(
 yf_check(strpos($hidden, '27.564722') === false && strpos($hidden, 'bom.cost_view') !== false && strpos($hidden, 'A4-2-01-0967') !== false, '没有成本权限时不输出成本数字');
 yf_check(strpos($schema, 'MB057') !== false && strpos($schema, 'MD007') !== false && strpos($schema, 'MD008') !== false, '建表脚本包含标准材料成本、底数和损耗率');
 yf_check(strpos($agentReadme, 'py -3.13 sync.py --once') !== false && strpos($agentReadme, 'MB057') !== false, '代理说明要求重跑同步并写了 MB057');
+yf_check(strpos($agentReadme, 'py -3.13 sync.py --full') !== false && strpos($agentReadme, 'DSCLB') !== false, '代理说明写了特征数据与全量重推');
+yf_check(strpos($syncReadme, 'A4-2-01-0254') !== false && strpos($syncReadme, 'yf_item_feature') !== false, '广州说明写了粗胚特征核对');
+yf_check(strpos($agent, 'type": "feature"') !== false || strpos($agent, "'feature'") !== false, '代理推送 feature 类型');
 yf_check(strpos($syncReadme, '171.9508') !== false && strpos($syncReadme, 'A1-1-01-0381') !== false, '广州说明写了成品核对目标');
 
 $baseZero = yf_line_material(array('qty' => '4', 'base_qty' => '0', 'scrap_rate' => '0', 'std_material' => '2'));
@@ -252,6 +255,73 @@ foreach ($leaked as $secret) {
 }
 yf_check($hiddenOk, '没有成本权限时不输出标准成本、材料合计和最近进价');
 
+yf_apply($sqlite, yf_normalize_payload(array(
+    'type' => 'invmb',
+    'batch_id' => 't-rough-item',
+    'rows' => array(array(
+        'item_code' => 'A4-2-01-0254',
+        'item_name' => '粗胚样例',
+        'spec' => '',
+        'std_material' => '3.18',
+        'std_mfg' => '0',
+        'std_subcontract' => '0',
+    )),
+)), '127.0.0.1');
+yf_apply($sqlite, yf_normalize_payload(array(
+    'type' => 'feature',
+    'batch_id' => 't-rough-feat',
+    'items' => array('A4-2-01-0254'),
+    'rows' => array(
+        array('item_code' => 'A4-2-01-0254', 'feature_code' => 'UDF51', 'feature_name' => '数控开料', 'amount' => '0.05', 'sort_no' => 1),
+        array('item_code' => 'A4-2-01-0254', 'feature_code' => 'UDF52', 'feature_name' => '数控加工', 'amount' => '1.095', 'sort_no' => 2),
+        array('item_code' => 'A4-2-01-0254', 'feature_code' => 'UDF53', 'feature_name' => '五金钻孔', 'amount' => '0.2376', 'sort_no' => 3),
+    ),
+)), '127.0.0.1');
+$rough = yf_detail($sqlite, 'A4-2-01-0254');
+yf_check(is_array($rough) && yf_format_decimal($rough['std_total']['total']) === '4.5626' && !empty($rough['std_total']['features_applied']), '粗胚 A4-2-01-0254 成本金额含特征约 4.5626');
+$roughHtml = yf_render_page(array(
+    'q' => 'A4-2-01-0254',
+    'code' => 'A4-2-01-0254',
+    'rows' => yf_search($sqlite, 'A4-2-01-0254')['rows'],
+    'detail' => $rough,
+    'can_cost' => true,
+    'ready' => true,
+    'mirror_synced_at' => $rough['synced_at'],
+    'user_label' => '测试',
+    'notice' => '',
+    'recent' => false,
+));
+yf_check(strpos($roughHtml, '4.5626') !== false && strpos($roughHtml, '数控开料') !== false && strpos($roughHtml, '特征数据') !== false, '粗胚页展示特征明细与成本金额');
+$roughHidden = yf_render_page(array(
+    'q' => 'A4-2-01-0254',
+    'code' => 'A4-2-01-0254',
+    'rows' => yf_search($sqlite, 'A4-2-01-0254')['rows'],
+    'detail' => $rough,
+    'can_cost' => false,
+    'ready' => true,
+    'mirror_synced_at' => $rough['synced_at'],
+    'user_label' => '测试',
+    'notice' => '',
+    'recent' => false,
+));
+yf_check(strpos($roughHidden, '4.5626') === false && strpos($roughHidden, '数控开料') === false, '无权限时不泄露粗胚特征金额');
+yf_apply($sqlite, yf_normalize_payload(array(
+    'type' => 'feature',
+    'batch_id' => 't-driver-feat',
+    'items' => array('A5-2-06-0029'),
+    'rows' => array(array('item_code' => 'A5-2-06-0029', 'feature_code' => 'UDF51', 'feature_name' => '数控开料', 'amount' => '9', 'sort_no' => 1)),
+)), '127.0.0.1');
+$driverAmt = yf_std_total(array('std_material' => '74', 'std_mfg' => '2', 'std_subcontract' => '1'), array(array('amount' => '9')));
+yf_check(yf_format_decimal($driverAmt['total']) === '77' && empty($driverAmt['features_applied']), '制费或加工非零时不双计特征');
+yf_apply($sqlite, yf_normalize_payload(array(
+    'type' => 'feature',
+    'batch_id' => 't-rough-clear',
+    'items' => array('A4-2-01-0254'),
+    'rows' => array(),
+)), '127.0.0.1');
+$clearedFeat = $sqlite->query("SELECT COUNT(*) FROM yf_item_feature WHERE item_code = 'A4-2-01-0254'")->fetchColumn();
+yf_check((int)$clearedFeat === 0, 'feature 空行按 items 清空旧特征');
+
 $legacy = new PDO('sqlite::memory:');
 $legacy->exec("CREATE TABLE yf_invmb (item_code TEXT PRIMARY KEY, item_name TEXT NOT NULL DEFAULT '', spec TEXT NOT NULL DEFAULT '', synced_at TEXT NOT NULL, batch_id TEXT NOT NULL DEFAULT '')");
 $legacy->exec("CREATE TABLE yf_bommd (parent_code TEXT NOT NULL, component_code TEXT NOT NULL, qty TEXT NOT NULL DEFAULT '0', synced_at TEXT NOT NULL, batch_id TEXT NOT NULL DEFAULT '', PRIMARY KEY (parent_code, component_code))");
@@ -320,7 +390,7 @@ if ($python !== '') {
     $sqlCode = 1;
     exec(escapeshellarg($python) . ' ' . escapeshellarg($root . '/yifei_agent/sync.py') . ' --print-sql', $sqlOut, $sqlCode);
     $printed = implode("\n", $sqlOut);
-    yf_check($sqlCode === 0 && strpos($printed, 'RTRIM(MB007)') !== false && strpos($printed, 'MB057') !== false && strpos($printed, 'MD007') !== false && strpos($printed, 'MD008') !== false && strpos($printed, 'UPDATE') === false, '打印的 SQL 只读且含标准材料成本、底数、损耗率');
+    yf_check($sqlCode === 0 && strpos($printed, 'RTRIM(MB007)') !== false && strpos($printed, 'MB057') !== false && strpos($printed, 'MD007') !== false && strpos($printed, 'MD008') !== false && strpos($printed, '-- feature') !== false && strpos($printed, 'UPDATE') === false, '打印的 SQL 只读且含标准材料成本、底数、损耗率、特征占位');
 } else {
     yf_check(false, '找不到 python3');
 }
@@ -478,6 +548,7 @@ function yf_mysql_smoke(string $root): void
             PDO::ATTR_EMULATE_PREPARES => false,
         ));
         $pdo->exec('DROP TABLE IF EXISTS yf_sync_batches');
+        $pdo->exec('DROP TABLE IF EXISTS yf_item_feature');
         $pdo->exec('DROP TABLE IF EXISTS yf_cstmb');
         $pdo->exec('DROP TABLE IF EXISTS yf_bommd');
         $pdo->exec('DROP TABLE IF EXISTS yf_invmb');
