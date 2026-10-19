@@ -7,9 +7,14 @@ declare(strict_types=1);
  *
  * 已核实字段：
  *   INVMB  MB001 品号，MB002 品名，MB003 规格
- *   BOMMD  MD001 主件，MD003 元件，MD006 用量
+ *          MB025 品号属性，MB050 最近进价（不参与材料合计）
+ *          MB057 单位标准材料成本，MB058 单位标准人工成本
+ *          MB061 本阶人工，MB062 本阶制费，MB096 工时底数
+ *   BOMMD  MD001 主件，MD003 元件，MD006 组成用量，MD007 底数，MD008 损耗率
  *   CSTMB  MB002 期间，MB004 单据号（不是品号），MB007 品号，MB005 成本
- * 不使用 CSTLA、CSTMC。char 尾部空格在入库时按 RTRIM 去掉。
+ * 相邻推断、库里没有就跳过的栏位：MB059 单位标准制造费用，MB060 单位标准加工费用，MB063 本阶加工。
+ * 标准成本合计是这四项单位标准成本的和，不是单独一列。不使用 CSTLA、CSTMC。
+ * char 尾部空格在入库时按 RTRIM 去掉。请求里没有的键不会覆盖已有列。
  */
 
 const YF_CODE_MAX = 40;
@@ -21,14 +26,84 @@ const YF_BATCH_MAX = 64;
 const YF_ROWS_MAX = 500;
 const YF_BODY_MAX = 2097152;
 
+function yf_extra_column_defs(): array
+{
+    return array(
+        'yf_invmb' => array(
+            'item_attr' => array(
+                'mysql' => "VARCHAR(4) NOT NULL DEFAULT '' COMMENT 'INVMB.MB025 品号属性'",
+                'sqlite' => "TEXT NOT NULL DEFAULT ''",
+            ),
+            'latest_purchase' => array(
+                'mysql' => "DECIMAL(18,6) NULL COMMENT 'INVMB.MB050 最近进价，不参与材料合计'",
+                'sqlite' => 'TEXT',
+            ),
+            'std_material' => array(
+                'mysql' => "DECIMAL(18,6) NULL COMMENT 'INVMB.MB057 单位标准材料成本'",
+                'sqlite' => 'TEXT',
+            ),
+            'std_labor' => array(
+                'mysql' => "DECIMAL(18,6) NULL COMMENT 'INVMB.MB058 单位标准人工成本'",
+                'sqlite' => 'TEXT',
+            ),
+            'std_mfg' => array(
+                'mysql' => "DECIMAL(18,6) NULL COMMENT 'INVMB.MB059 单位标准制造费用，按相邻栏位推断'",
+                'sqlite' => 'TEXT',
+            ),
+            'std_subcontract' => array(
+                'mysql' => "DECIMAL(18,6) NULL COMMENT 'INVMB.MB060 单位标准加工费用，按相邻栏位推断'",
+                'sqlite' => 'TEXT',
+            ),
+            'level_labor' => array(
+                'mysql' => "DECIMAL(18,6) NULL COMMENT 'INVMB.MB061 本阶人工'",
+                'sqlite' => 'TEXT',
+            ),
+            'level_mfg' => array(
+                'mysql' => "DECIMAL(18,6) NULL COMMENT 'INVMB.MB062 本阶制费'",
+                'sqlite' => 'TEXT',
+            ),
+            'level_process' => array(
+                'mysql' => "DECIMAL(18,6) NULL COMMENT 'INVMB.MB063 本阶加工，按相邻栏位推断'",
+                'sqlite' => 'TEXT',
+            ),
+            'hour_base' => array(
+                'mysql' => "DECIMAL(18,6) NULL COMMENT 'INVMB.MB096 工时底数'",
+                'sqlite' => 'TEXT',
+            ),
+        ),
+        'yf_bommd' => array(
+            'base_qty' => array(
+                'mysql' => "DECIMAL(18,6) NOT NULL DEFAULT 1 COMMENT 'BOMMD.MD007 底数'",
+                'sqlite' => "TEXT NOT NULL DEFAULT '1'",
+            ),
+            'scrap_rate' => array(
+                'mysql' => "DECIMAL(18,6) NOT NULL DEFAULT 0 COMMENT 'BOMMD.MD008 损耗率，0.25 表示 25%'",
+                'sqlite' => "TEXT NOT NULL DEFAULT '0'",
+            ),
+        ),
+    );
+}
+
+function yf_column_lines(string $driver, string $table): string
+{
+    $lines = array();
+    foreach (yf_extra_column_defs()[$table] as $name => $defs) {
+        $lines[] = $name . ' ' . $defs[$driver];
+    }
+    return implode(",\n            ", $lines);
+}
+
 function yf_mysql_statements(): array
 {
     $engine = 'ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci';
+    $invmb = yf_column_lines('mysql', 'yf_invmb');
+    $bommd = yf_column_lines('mysql', 'yf_bommd');
     return array(
         "CREATE TABLE IF NOT EXISTS yf_invmb (
             item_code VARCHAR(40) NOT NULL COMMENT 'INVMB.MB001 品号',
             item_name VARCHAR(255) NOT NULL DEFAULT '' COMMENT 'INVMB.MB002 品名',
             spec VARCHAR(500) NOT NULL DEFAULT '' COMMENT 'INVMB.MB003 规格',
+            $invmb,
             synced_at DATETIME NOT NULL COMMENT '本行最后一次成功写入时间',
             batch_id VARCHAR(64) NOT NULL DEFAULT '' COMMENT '同步批次',
             PRIMARY KEY (item_code),
@@ -39,6 +114,7 @@ function yf_mysql_statements(): array
             parent_code VARCHAR(40) NOT NULL COMMENT 'BOMMD.MD001 主件品号',
             component_code VARCHAR(40) NOT NULL COMMENT 'BOMMD.MD003 元件品号',
             qty DECIMAL(18,6) NOT NULL DEFAULT 0 COMMENT 'BOMMD.MD006 用量',
+            $bommd,
             synced_at DATETIME NOT NULL,
             batch_id VARCHAR(64) NOT NULL DEFAULT '',
             PRIMARY KEY (parent_code, component_code),
@@ -76,22 +152,26 @@ function yf_mysql_statements(): array
 
 function yf_sqlite_statements(): array
 {
+    $invmb = yf_column_lines('sqlite', 'yf_invmb');
+    $bommd = yf_column_lines('sqlite', 'yf_bommd');
     return array(
-        'CREATE TABLE IF NOT EXISTS yf_invmb (
+        "CREATE TABLE IF NOT EXISTS yf_invmb (
             item_code TEXT PRIMARY KEY,
-            item_name TEXT NOT NULL DEFAULT \'\',
-            spec TEXT NOT NULL DEFAULT \'\',
+            item_name TEXT NOT NULL DEFAULT '',
+            spec TEXT NOT NULL DEFAULT '',
+            $invmb,
             synced_at TEXT NOT NULL,
-            batch_id TEXT NOT NULL DEFAULT \'\'
-        )',
-        'CREATE TABLE IF NOT EXISTS yf_bommd (
+            batch_id TEXT NOT NULL DEFAULT ''
+        )",
+        "CREATE TABLE IF NOT EXISTS yf_bommd (
             parent_code TEXT NOT NULL,
             component_code TEXT NOT NULL,
-            qty TEXT NOT NULL DEFAULT \'0\',
+            qty TEXT NOT NULL DEFAULT '0',
+            $bommd,
             synced_at TEXT NOT NULL,
-            batch_id TEXT NOT NULL DEFAULT \'\',
+            batch_id TEXT NOT NULL DEFAULT '',
             PRIMARY KEY (parent_code, component_code)
-        )',
+        )",
         'CREATE TABLE IF NOT EXISTS yf_cstmb (
             item_code TEXT PRIMARY KEY,
             period TEXT NOT NULL DEFAULT \'\',
@@ -128,6 +208,40 @@ function yf_install(PDO $pdo): void
     $statements = $driver === 'sqlite' ? yf_sqlite_statements() : yf_mysql_statements();
     foreach ($statements as $sql) {
         $pdo->exec($sql);
+    }
+    yf_ensure_columns($pdo);
+}
+
+function yf_table_columns(PDO $pdo, string $table): array
+{
+    $driver = (string)$pdo->getAttribute(PDO::ATTR_DRIVER_NAME);
+    $have = array();
+    if ($driver === 'sqlite') {
+        $stmt = $pdo->query('PRAGMA table_info(' . yf_ident($table) . ')');
+        foreach ($stmt as $row) {
+            $have[strtolower((string)$row['name'])] = true;
+        }
+        return $have;
+    }
+    $stmt = $pdo->query('SHOW COLUMNS FROM ' . yf_ident($table));
+    foreach ($stmt as $row) {
+        $have[strtolower((string)$row['Field'])] = true;
+    }
+    return $have;
+}
+
+function yf_ensure_columns(PDO $pdo): void
+{
+    $driver = (string)$pdo->getAttribute(PDO::ATTR_DRIVER_NAME);
+    $key = $driver === 'sqlite' ? 'sqlite' : 'mysql';
+    foreach (yf_extra_column_defs() as $table => $cols) {
+        $have = yf_table_columns($pdo, $table);
+        foreach ($cols as $name => $defs) {
+            if (!empty($have[$name])) {
+                continue;
+            }
+            $pdo->exec('ALTER TABLE ' . yf_ident($table) . ' ADD COLUMN ' . yf_ident($name) . ' ' . $defs[$key]);
+        }
     }
 }
 
@@ -480,22 +594,58 @@ function yf_normalize_payload(array $data): array
     return array('type' => $type, 'batch_id' => $batch, 'rows' => $rows);
 }
 
+function yf_optional_decimal_key(array $row, array &$out, string $key, string $field, ?string $nullDefault = null): void
+{
+    if (!array_key_exists($key, $row)) {
+        return;
+    }
+    $raw = $row[$key];
+    if ($raw === null || $raw === '') {
+        if ($nullDefault === null) {
+            $out[$key] = null;
+            return;
+        }
+        $raw = $nullDefault;
+    }
+    $out[$key] = yf_decimal_in($raw, $field);
+}
+
 function yf_normalize_row(string $type, array $row, int $index): array
 {
     $at = '第 ' . ($index + 1) . ' 行';
     if ($type === 'invmb') {
-        return array(
+        $out = array(
             'item_code' => yf_text((string)($row['item_code'] ?? ''), YF_CODE_MAX, $at . '品号', true),
             'item_name' => yf_text((string)($row['item_name'] ?? ''), YF_NAME_MAX, $at . '品名', false, true),
             'spec' => yf_text((string)($row['spec'] ?? ''), YF_SPEC_MAX, $at . '规格', false, true),
         );
+        if (array_key_exists('item_attr', $row)) {
+            $out['item_attr'] = yf_text((string)($row['item_attr'] ?? ''), 4, $at . '品号属性', false);
+        }
+        foreach (array(
+            'latest_purchase' => '最近进价',
+            'std_material' => '单位标准材料成本',
+            'std_labor' => '单位标准人工成本',
+            'std_mfg' => '单位标准制造费用',
+            'std_subcontract' => '单位标准加工费用',
+            'level_labor' => '本阶人工',
+            'level_mfg' => '本阶制费',
+            'level_process' => '本阶加工',
+            'hour_base' => '工时底数',
+        ) as $key => $label) {
+            yf_optional_decimal_key($row, $out, $key, $at . $label);
+        }
+        return $out;
     }
     if ($type === 'bommd') {
-        return array(
+        $out = array(
             'parent_code' => yf_text((string)($row['parent_code'] ?? ''), YF_CODE_MAX, $at . '主件', true),
             'component_code' => yf_text((string)($row['component_code'] ?? ''), YF_CODE_MAX, $at . '元件', true),
             'qty' => yf_decimal_in($row['qty'] ?? '0', $at . '用量'),
         );
+        yf_optional_decimal_key($row, $out, 'base_qty', $at . '底数', '1');
+        yf_optional_decimal_key($row, $out, 'scrap_rate', $at . '损耗率', '0');
+        return $out;
     }
     $period = yf_text((string)($row['period'] ?? ''), YF_PERIOD_MAX, $at . '期间', true);
     if (!preg_match('/^[0-9A-Za-z_-]+$/', $period)) {
@@ -523,6 +673,18 @@ function yf_tables_ready(PDO $pdo): bool
     }
     foreach (array('yf_invmb', 'yf_bommd', 'yf_cstmb', 'yf_sync_batches') as $table) {
         if (empty($have[$table])) {
+            return false;
+        }
+    }
+    $inv = yf_table_columns($pdo, 'yf_invmb');
+    $bom = yf_table_columns($pdo, 'yf_bommd');
+    foreach (array('std_material', 'std_labor') as $col) {
+        if (empty($inv[$col])) {
+            return false;
+        }
+    }
+    foreach (array('base_qty', 'scrap_rate') as $col) {
+        if (empty($bom[$col])) {
             return false;
         }
     }
@@ -588,13 +750,10 @@ function yf_apply_items(PDO $pdo, array $rows, string $batch, string $now): arra
         $picked[$row['item_code']] = $row;
     }
     foreach ($picked as $row) {
-        yf_upsert($pdo, 'yf_invmb', array('item_code' => true), array(
-            'item_code' => $row['item_code'],
-            'item_name' => $row['item_name'],
-            'spec' => $row['spec'],
-            'synced_at' => $now,
-            'batch_id' => $batch,
-        ));
+        $save = $row;
+        $save['synced_at'] = $now;
+        $save['batch_id'] = $batch;
+        yf_upsert($pdo, 'yf_invmb', array('item_code' => true), $save);
     }
     return array(count($picked), count($rows) - count($picked));
 }
@@ -607,6 +766,134 @@ function yf_decimal_add(string $a, string $b): string
     return yf_decimal_in((float)$a + (float)$b, '用量');
 }
 
+function yf_decimal_is_zero(string $value): bool
+{
+    if (function_exists('bccomp')) {
+        return bccomp($value, '0', 6) === 0;
+    }
+    return (float)$value == 0.0;
+}
+
+function yf_decimal_cmp(string $a, string $b): int
+{
+    if (function_exists('bccomp')) {
+        return bccomp($a, $b, 6);
+    }
+    return ((float)$a <=> (float)$b);
+}
+
+function yf_decimal_mul(string $a, string $b): string
+{
+    if (function_exists('bcmul')) {
+        return bcmul($a, $b, 6);
+    }
+    return yf_decimal_in(((float)$a) * ((float)$b), '金额');
+}
+
+function yf_decimal_div(string $a, string $b): string
+{
+    if (yf_decimal_is_zero($b)) {
+        throw new InvalidArgumentException('除数不能为 0');
+    }
+    if (function_exists('bcdiv')) {
+        return bcdiv($a, $b, 6);
+    }
+    return yf_decimal_in(((float)$a) / ((float)$b), '金额');
+}
+
+function yf_effective_qty($qty, $base, $scrap): string
+{
+    $qtyNorm = yf_decimal_in($qty === null || $qty === '' ? '0' : $qty, '用量');
+    if ($base === null || $base === '') {
+        $baseNorm = '1.000000';
+    } else {
+        $baseNorm = yf_decimal_in($base, '底数');
+        if (yf_decimal_is_zero($baseNorm)) {
+            $baseNorm = '1.000000';
+        }
+    }
+    $scrapNorm = ($scrap === null || $scrap === '') ? '0.000000' : yf_decimal_in($scrap, '损耗率');
+    $factor = yf_decimal_add('1.000000', $scrapNorm);
+    return yf_decimal_mul(yf_decimal_div($qtyNorm, $baseNorm), $factor);
+}
+
+function yf_line_material(array $child): array
+{
+    $std = $child['std_material'] ?? null;
+    $missing = ($std === null || $std === '');
+    $effective = yf_effective_qty($child['qty'] ?? '0', $child['base_qty'] ?? null, $child['scrap_rate'] ?? null);
+    $extended = null;
+    if (!$missing) {
+        $extended = yf_decimal_mul(yf_decimal_in((string)$std, '单位标准材料成本'), $effective);
+    }
+    return array(
+        'effective_qty' => $effective,
+        'material_cost' => $extended,
+        'std_missing' => $missing,
+    );
+}
+
+function yf_material_rollup(array $children): array
+{
+    $total = '0.000000';
+    $missing = 0;
+    $zero = 0;
+    $phantom = 0;
+    $lines = array();
+    foreach ($children as $child) {
+        $line = yf_line_material($child);
+        $lines[] = $line;
+        $attr = strtoupper(trim((string)($child['item_attr'] ?? '')));
+        if ($attr === 'Y') {
+            $phantom++;
+        }
+        if ($line['std_missing']) {
+            $missing++;
+            continue;
+        }
+        if (yf_decimal_is_zero(yf_decimal_in((string)$child['std_material'], '单位标准材料成本'))) {
+            $zero++;
+        }
+        $total = yf_decimal_add($total, (string)$line['material_cost']);
+    }
+    return array(
+        'lines' => $lines,
+        'material_total' => $total,
+        'missing_std' => $missing,
+        'zero_std' => $zero,
+        'phantom' => $phantom,
+    );
+}
+
+function yf_std_total(?array $item): array
+{
+    $parts = array(
+        'std_material' => '材料',
+        'std_labor' => '人工',
+        'std_mfg' => '制费',
+        'std_subcontract' => '加工',
+    );
+    if (!$item) {
+        return array('total' => null, 'present' => array(), 'absent' => array_values($parts));
+    }
+    $sum = '0.000000';
+    $present = array();
+    $absent = array();
+    foreach ($parts as $key => $label) {
+        if (!array_key_exists($key, $item) || $item[$key] === null || $item[$key] === '') {
+            $absent[] = $label;
+            continue;
+        }
+        $present[] = $label;
+        $sum = yf_decimal_add($sum, yf_decimal_in((string)$item[$key], $label));
+    }
+    return array(
+        'total' => $present ? $sum : null,
+        'present' => $present,
+        'absent' => $absent,
+    );
+}
+
 function yf_apply_bom(PDO $pdo, array $rows, string $batch, string $now): array
 {
     $picked = array();
@@ -617,15 +904,17 @@ function yf_apply_bom(PDO $pdo, array $rows, string $batch, string $now): array
             continue;
         }
         $picked[$key]['qty'] = yf_decimal_add($picked[$key]['qty'], $row['qty']);
+        foreach (array('base_qty', 'scrap_rate') as $extra) {
+            if (!array_key_exists($extra, $picked[$key]) && array_key_exists($extra, $row)) {
+                $picked[$key][$extra] = $row[$extra];
+            }
+        }
     }
     foreach ($picked as $row) {
-        yf_upsert($pdo, 'yf_bommd', array('parent_code' => true, 'component_code' => true), array(
-            'parent_code' => $row['parent_code'],
-            'component_code' => $row['component_code'],
-            'qty' => $row['qty'],
-            'synced_at' => $now,
-            'batch_id' => $batch,
-        ));
+        $save = $row;
+        $save['synced_at'] = $now;
+        $save['batch_id'] = $batch;
+        yf_upsert($pdo, 'yf_bommd', array('parent_code' => true, 'component_code' => true), $save);
     }
     return array(count($picked), count($rows) - count($picked));
 }
@@ -702,7 +991,7 @@ function yf_search(PDO $pdo, string $q, int $limit = 50): array
     }
     $q = trim($q);
     if ($q === '') {
-        $sql = 'SELECT i.item_code, i.item_name, i.spec, i.synced_at AS item_synced_at,
+        $sql = 'SELECT i.item_code, i.item_name, i.spec, i.std_material, i.synced_at AS item_synced_at,
                 c.cost, c.period, c.doc_no, c.synced_at AS cost_synced_at
             FROM yf_invmb i
             LEFT JOIN yf_cstmb c ON c.item_code = i.item_code
@@ -716,6 +1005,7 @@ function yf_search(PDO $pdo, string $q, int $limit = 50): array
     $sql = 'SELECT u.item_code,
             COALESCE(i.item_name, \'\') AS item_name,
             COALESCE(i.spec, \'\') AS spec,
+            i.std_material,
             i.synced_at AS item_synced_at,
             c.cost, c.period, c.doc_no, c.synced_at AS cost_synced_at
         FROM (
@@ -737,15 +1027,18 @@ function yf_detail(PDO $pdo, string $code): ?array
     if (!yf_tables_ready($pdo) || $code === '') {
         return null;
     }
-    $item = $pdo->prepare('SELECT item_code, item_name, spec, synced_at, batch_id FROM yf_invmb WHERE item_code = ?');
+    $item = $pdo->prepare('SELECT item_code, item_name, spec, item_attr, latest_purchase, std_material, std_labor, std_mfg, std_subcontract, level_labor, level_mfg, level_process, hour_base, synced_at, batch_id FROM yf_invmb WHERE item_code = ?');
     $item->execute(array($code));
     $itemRow = $item->fetch() ?: null;
     $cost = $pdo->prepare('SELECT item_code, period, doc_no, cost, synced_at, batch_id FROM yf_cstmb WHERE item_code = ?');
     $cost->execute(array($code));
     $costRow = $cost->fetch() ?: null;
-    $childrenStmt = $pdo->prepare('SELECT b.component_code, b.qty, b.synced_at,
+    $childrenStmt = $pdo->prepare('SELECT b.component_code, b.qty, b.base_qty, b.scrap_rate, b.synced_at,
             COALESCE(i.item_name, \'\') AS item_name,
             COALESCE(i.spec, \'\') AS spec,
+            i.item_attr,
+            i.latest_purchase, i.std_material, i.std_labor, i.std_mfg, i.std_subcontract,
+            i.level_labor, i.level_mfg, i.level_process,
             c.cost, c.period
         FROM yf_bommd b
         LEFT JOIN yf_invmb i ON i.item_code = b.component_code
@@ -778,6 +1071,12 @@ function yf_detail(PDO $pdo, string $code): ?array
         return $value !== '';
     });
     rsort($times);
+    $rollup = yf_material_rollup($children);
+    foreach ($children as $i => $_child) {
+        $children[$i]['effective_qty'] = $rollup['lines'][$i]['effective_qty'];
+        $children[$i]['material_cost'] = $rollup['lines'][$i]['material_cost'];
+        $children[$i]['std_missing'] = $rollup['lines'][$i]['std_missing'];
+    }
     return array(
         'code' => $code,
         'item' => $itemRow,
@@ -785,5 +1084,12 @@ function yf_detail(PDO $pdo, string $code): ?array
         'children' => $children,
         'parents' => $parents,
         'synced_at' => $times ? $times[0] : '',
+        'rollup' => array(
+            'material_total' => $rollup['material_total'],
+            'missing_std' => $rollup['missing_std'],
+            'zero_std' => $rollup['zero_std'],
+            'phantom' => $rollup['phantom'],
+        ),
+        'std_total' => yf_std_total($itemRow),
     );
 }
