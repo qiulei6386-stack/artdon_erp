@@ -207,6 +207,46 @@ function yf_local_preview(): bool
     return !empty($cfg['allow_preview_without_login']);
 }
 
+function yf_safe_return_url(string $requestUri): string
+{
+    $url = str_replace(array("\r", "\n"), '', trim($requestUri));
+    if ($url === '') {
+        return '';
+    }
+    if (preg_match('#^[a-z][a-z0-9+.-]*:#i', $url) || strpos($url, '//') === 0 || strpos($url, '\\') !== false) {
+        return '';
+    }
+    $path = parse_url($url, PHP_URL_PATH);
+    $page = basename((string)$path);
+    if ($page === 'login.php' || $page === 'logout.php') {
+        return '';
+    }
+    return $url;
+}
+
+function yf_site_login_url(string $scriptName, string $requestUri): string
+{
+    $script = str_replace(array("\r", "\n", '\\'), array('', '', '/'), trim($scriptName));
+    if ($script === '' || preg_match('#^[a-z][a-z0-9+.-]*:#i', $script) || strpos($script, '//') !== false) {
+        $login = '/login.php';
+    } else {
+        if ($script[0] !== '/') {
+            $script = '/' . $script;
+        }
+        $dir = dirname(dirname($script));
+        if ($dir === '/' || $dir === '.' || $dir === '') {
+            $login = '/login.php';
+        } else {
+            $login = rtrim($dir, '/') . '/login.php';
+        }
+    }
+    $return = yf_safe_return_url($requestUri);
+    if ($return === '') {
+        return $login;
+    }
+    return $login . '?redirect=' . rawurlencode($return);
+}
+
 function yf_authorize(?string $presented): void
 {
     $expected = yf_configured_token();

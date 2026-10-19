@@ -25,12 +25,25 @@ $agentReadme = (string)file_get_contents($root . '/yifei_agent/README.md');
 $syncReadme = (string)file_get_contents($root . '/yifei_sync/README.md');
 $ignore = (string)file_get_contents($root . '/.gitignore');
 $page = (string)file_get_contents($root . '/yifei_sync/index.php');
+$bootstrap = (string)file_get_contents($root . '/yifei_sync/bootstrap.php');
+$auth = (string)file_get_contents($root . '/includes/auth.php');
 $example = json_decode((string)file_get_contents($root . '/yifei_agent/config.example.json'), true);
 $examplePhp = (string)file_get_contents($root . '/yifei_sync/config.example.php');
 
 yf_check(strpos($bom, "goModule('yifei_sync/index.php')") !== false && strpos($bom, '易飞数据') !== false, 'BOM 页有易飞数据入口');
 yf_check(strpos($portal, 'yifei_sync/index.php') !== false && strpos($portal, '易飞数据') !== false, '首页 BOM 旁有易飞数据入口');
-yf_check(strpos($page, "artdon_sso_require_page('bom')") !== false, '查询页沿用 BOM 登录');
+yf_check(strpos($page, 'yf_require_bom_user()') !== false && strpos($page, 'artdon_sso_core.php') === false, '查询页经易飞引导登录，不直接套用子目录相对跳转');
+yf_check(strpos($bootstrap, "artdon_sso_require_page('bom')") !== false, '登录后仍检查 BOM 查看权限');
+yf_check(strpos($auth, "redirect('login.php'") !== false, '其他页面仍使用原来的相对登录地址');
+$prefixed = yf_site_login_url('/artdon_erp/yifei_sync/index.php', '/artdon_erp/yifei_sync/index.php?q=' . rawurlencode('散热器'));
+yf_check(strpos($prefixed, '/artdon_erp/login.php?redirect=') === 0 && strpos($prefixed, '/yifei_sync/login.php') === false, '子目录登录跳到 /artdon_erp/login.php');
+yf_check(rawurldecode(substr($prefixed, strlen('/artdon_erp/login.php?redirect='))) === '/artdon_erp/yifei_sync/index.php?q=' . rawurlencode('散热器'), '回跳保留易飞查询页和关键词');
+$rootLogin = yf_site_login_url('/yifei_sync/index.php', '/yifei_sync/index.php?code=A4-2-01-4286');
+yf_check($rootLogin === '/login.php?redirect=' . rawurlencode('/yifei_sync/index.php?code=A4-2-01-4286'), '站点装在根目录时登录是 /login.php');
+yf_check(yf_site_login_url('/artdon_erp/yifei_sync/index.php', '') === '/artdon_erp/login.php', '没有来源地址时只给登录页');
+yf_check(strpos(yf_site_login_url('/artdon_erp/yifei_sync/index.php', 'https://evil.example/phish'), 'redirect=') === false, '回跳拒绝带协议的地址');
+yf_check(strpos(yf_site_login_url('/artdon_erp/yifei_sync/index.php', '//evil.example/phish'), 'redirect=') === false, '回跳拒绝协议相对地址');
+yf_check(yf_site_login_url('/artdon_erp/yifei_sync/index.php', '/artdon_erp/login.php') === '/artdon_erp/login.php', '回跳拒绝登录页自身');
 yf_check(strpos((string)file_get_contents($root . '/yifei_sync/lib.php'), "getenv('YIFEI_SYNC_ALLOW_PREVIEW') !== '1'") !== false, '预览开关不能单靠配置文件打开');
 yf_check(strpos($page, 'bom.cost_view') !== false, '成本沿用 bom.cost_view');
 yf_check(strpos($ignore, 'yifei_sync/config.local.php') !== false && strpos($ignore, 'yifei_agent/config.json') !== false, '密钥和代理配置不入库');
@@ -188,6 +201,7 @@ if ($python !== '') {
     yf_check(false, '找不到 python3');
 }
 
+yf_login_redirect_smoke($root);
 yf_mysql_smoke($root);
 
 if ($fail > 0) {
@@ -195,6 +209,91 @@ if ($fail > 0) {
     exit(1);
 }
 echo "yifei sync contract passed\n";
+
+function yf_login_redirect_smoke(string $root): void
+{
+    putenv('YIFEI_SYNC_ALLOW_PREVIEW');
+    putenv('YIFEI_DOCROOT=' . $root);
+    $port = 8766;
+    $log = sys_get_temp_dir() . '/yifei-login-redirect.log';
+    $router = sys_get_temp_dir() . '/yifei-login-router.php';
+    @unlink($log);
+    file_put_contents($router, <<<'PHP'
+<?php
+$path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);
+$prefix = '/artdon_erp';
+if (!is_string($path) || strpos($path, $prefix . '/') !== 0) {
+    http_response_code(404);
+    echo 'missing prefix';
+    return;
+}
+$rel = substr($path, strlen($prefix));
+$file = getenv('YIFEI_DOCROOT') . $rel;
+if (!is_file($file)) {
+    http_response_code(404);
+    echo 'not found';
+    return;
+}
+$_SERVER['SCRIPT_NAME'] = $prefix . $rel;
+require $file;
+PHP
+    );
+    $pipes = array();
+    $proc = proc_open(
+        array('php', '-S', '127.0.0.1:' . $port, '-t', $root, $router),
+        array(array('file', '/dev/null', 'r'), array('file', $log, 'w'), array('file', $log, 'a')),
+        $pipes,
+        $root
+    );
+    $location = '';
+    $status = 0;
+    $path = '/artdon_erp/yifei_sync/index.php?q=' . rawurlencode('散热器');
+    $url = 'http://127.0.0.1:' . $port . $path;
+    for ($i = 0; $i < 20; $i++) {
+        $ch = curl_init($url);
+        if ($ch === false) {
+            break;
+        }
+        curl_setopt_array($ch, array(
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_HEADER => true,
+            CURLOPT_TIMEOUT => 2,
+            CURLOPT_FOLLOWLOCATION => false,
+        ));
+        $raw = curl_exec($ch);
+        $status = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+        if ($status === 302) {
+            if (preg_match('/^Location:\s*(\S+)/mi', (string)$raw, $m)) {
+                $location = trim($m[1]);
+            }
+            break;
+        }
+        if ($status >= 400) {
+            break;
+        }
+        usleep(100000);
+    }
+    yf_check($status === 302, '未登录查询页返回 302');
+    yf_check(
+        $location !== '' && strpos($location, 'yifei_sync/login.php') === false && preg_match('#^/artdon_erp/login\.php\?redirect=#', $location) === 1,
+        '登录地址是 /artdon_erp/login.php：' . $location
+    );
+    $query = parse_url($location, PHP_URL_QUERY);
+    $params = array();
+    parse_str((string)$query, $params);
+    $back = isset($params['redirect']) ? (string)$params['redirect'] : '';
+    yf_check(strpos($back, '/artdon_erp/yifei_sync/index.php') === 0 && strpos($back, 'q=') !== false, '登录后回到易飞查询页：' . $back);
+    require_once $root . '/includes/auth.php';
+    yf_check(auth_safe_redirect($back, 'index.php') === $back, '登录页接受这个回跳地址');
+    if ($status !== 302 && is_file($log)) {
+        fwrite(STDERR, substr((string)file_get_contents($log), 0, 800) . "\n");
+    }
+    if (is_resource($proc)) {
+        proc_terminate($proc);
+        proc_close($proc);
+    }
+}
 
 function yf_mysql_smoke(string $root): void
 {

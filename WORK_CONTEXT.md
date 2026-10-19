@@ -1,5 +1,14 @@
 # Artdon ERP 工作上下文
 
+## 2026-10-19：易飞查询页登录跳转修复
+
+- 本次完成：未登录打开 `yifei_sync/index.php` 时，登录地址改为站点根目录的 `login.php`（由脚本路径向上两级算出，例如 `/artdon_erp/login.php`），并用 `redirect` 带回原来的易飞查询页。不再跳到不存在的 `yifei_sync/login.php`。其他模块的相对 `login.php` 没有改。
+- 修改文件：`yifei_sync/lib.php`、`yifei_sync/bootstrap.php`、`yifei_sync/index.php`、`yifei_sync/README.md`、`tests/yifei_sync_contract.php`、本文件。
+- 检查结果：`php -l` 通过。`php tests/yifei_sync_contract.php` 通过。未登录请求 `/artdon_erp/yifei_sync/index.php?q=散热器` 返回 302，`Location` 为 `/artdon_erp/login.php?redirect=` 加上原来的查询页地址，不再指向 `yifei_sync/login.php`。`auth_safe_redirect` 接受该回跳地址。
+- 服务器部署情况：按本次要求不部署，也没有把分支同步到 `/www/wwwroot/Artdon/artdon_erp/`。合并进 `main` 之后由既有 GitHub Actions 快进。
+- Git 提交号及推送状态：本提交，分支 `cursor/yifei-login-redirect-ad9a`。正式目录未快进。
+- 尚未完成：合并后用未登录浏览器打开 `/artdon_erp/yifei_sync/index.php`，应进入 `/artdon_erp/login.php`，登录成功后回到该查询页。
+
 ## 2026-10-19：易飞只读同步 P1
 
 - 本次完成：广州增加易飞只读接收接口、`yf_*` 镜像表和中文查询页；仓库里另有 Windows 代理骨架。本地易飞（SQL Server 库 AT）只读查询后用 HTTPS 推送，广州不连接易飞，也不写回。字段只使用已核实的 INVMB（MB001 品号、MB002 品名、MB003 规格）、BOMMD（MD001 主件、MD003 元件、MD006 用量）、CSTMB（MB007 品号、MB002 期间、MB004 单据号、MB005 成本）。不使用 CSTLA、CSTMC。每个品号只保留最新期间的成本；较旧期间不会覆盖。char 尾部空格按 RTRIM 处理。

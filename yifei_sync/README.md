@@ -2,7 +2,7 @@
 
 本地鼎捷易飞（SQL Server，业务库 AT）只读推送到本系统。广州不连接易飞，本阶段也不写回易飞。
 
-查询页：`yifei_sync/index.php`  
+查询页：`yifei_sync/index.php`。未登录时跳到站点根目录的 `login.php`（例如 `/artdon_erp/login.php`），并带上原来的查询页地址；不会跳到 `yifei_sync/login.php`。  
 接收接口：`POST yifei_sync/api.php`  
 建表：`php yifei_sync/migrate.php`
 
