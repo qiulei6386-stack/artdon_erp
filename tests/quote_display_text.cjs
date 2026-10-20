@@ -13,6 +13,13 @@ const automatic={product:{series:'Fixture lamp',power:'10W',size:'220*22',quote_
 const autoBefore=JSON.stringify(automatic);
 assert.equal(pure.buildSpec(automatic),'1. Fixture lamp\n2. Power: 10W\n3. Size: 220*22\n4. Beam Angle: 90°\n5. Optic: OPAL\n6. LED: TEST-2835 3000K CRI90\n7. LED Driver: LIFUD GDE020\n8. IP20');
 assert.equal(JSON.stringify(automatic),autoBefore,'automatic rendering does not mutate item or component order');
+// A historical string can contain manual values which differ from old structured fields.
+const savedText={product:{series:'Old series',power:'999W',size:'999*99'},power:'999W',specification:'1. Customer supplied lamp\n2. Size: 220*22\n3. IP20\n4. Power: 14W',qty:2,price:30};
+const savedBefore=JSON.stringify(savedText);
+assert.equal(pure.buildSpec(savedText),'1. Customer supplied lamp\n2. Power: 14W\n3. Size: 220*22\n4. IP20');
+assert.equal(JSON.stringify(savedText),savedBefore,'historical manual values and snapshot remain unchanged');
+const freshParameters={product:{series:'Old series',size:'220*22'},parts:{},product_type:'track',power:'25W'};
+assert(pure.buildSpec(freshParameters).includes('Power: 25W'),'fresh editor parameters without saved specification keep updating live');
 const sourceItem={product:{quote_spec_display_override:''},specification:'STALE',extra_spec:'OLD',qty:1,price:2};
 assert.equal(pure.buildSpec(sourceItem),'');assert.equal(pure.piOrderItemFromQuote(sourceItem).specification,'','empty text stays empty at conversion');
 for(const text of ['New order wording','']){const item=pure.mergeOrderItemWithQuoteSnapshot({specification:text},sourceItem,0);assert.equal(pure.buildSpec(item),text,'order edits have priority over source quote text');}
