@@ -55,7 +55,7 @@ function qdoc_v640_schema_fix(): void {
   }
 }
 qdoc_v640_schema_fix();
-?><!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Artdon Quotation ERP PHP</title><script>try{document.documentElement.dataset.startPage=localStorage.getItem('artdon_quote_current_page')||'quote'}catch(e){document.documentElement.dataset.startPage='quote'}
+?><!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Artdon Quotation ERP PHP</title><script src="assets/quote-spec-order.js?v=20261020-1"></script><script>try{document.documentElement.dataset.startPage=localStorage.getItem('artdon_quote_current_page')||'quote'}catch(e){document.documentElement.dataset.startPage='quote'}
 </script>
 <style>
 @font-face{font-family:"ARS MaquetteTr";src:url("assets/fonts/ARSMaqLigTr.otf") format("opentype");font-weight:300 900;font-style:normal;font-display:swap}
@@ -3419,7 +3419,7 @@ function quoteDisplayManualSpec(item){
   const ip=normIp(item.ip||'');if(ip)lines.push(ip);
   lines.push(...quoteRemarksOfItem(item));return lines.map((x,i)=>(i+1)+'. '+x).join('\n');
 }
-function buildSpec(item=null){const displayItem=item||{product:S.product,power:$('power')?.value??'',beam_angle:$('beamAngle')?.value||'',cct:$('cct')?.value||'',cri:$('cri')?.value||'',ip:$('ip')?.value||'',quote_remarks:quoteRemarksFromForm()};const manualSpec=quoteDisplayManualSpec(displayItem);if(manualSpec!==null)return manualSpec;if(isMaterialSaleItem(item))return materialSaleSpec(item);let p=(item?item.product:S.product)||{}, parts=(item?item.parts:S.parts)||{}, lines=[], n=1, usedLabels=new Set();let add=(label,val)=>{label=specLabel(label);val=cleanParam(val);if(val){lines.push((n++)+'. '+label+': '+val);usedLabels.add(label)}};
+function buildSpec(item=null){const displayItem=item||{product:S.product,power:$('power')?.value??'',beam_angle:$('beamAngle')?.value||'',cct:$('cct')?.value||'',cri:$('cri')?.value||'',ip:$('ip')?.value||'',quote_remarks:quoteRemarksFromForm()};const manualSpec=quoteDisplayManualSpec(displayItem);if(manualSpec!==null)return quoteOrderSpec(manualSpec,displayItem);if(isMaterialSaleItem(item))return materialSaleSpec(item);let p=(item?item.product:S.product)||{}, parts=(item?item.parts:S.parts)||{}, lines=[], n=1, usedLabels=new Set();let add=(label,val)=>{label=specLabel(label);val=cleanParam(val);if(val){lines.push((n++)+'. '+label+': '+val);usedLabels.add(label)}};
 if(isVirtualQuoteItem(item))return virtualQuoteSpec(item);
 let seriesLine=productSeriesLine(p);if(seriesLine)lines.push((n++)+'. '+seriesLine);
 add('Power', formatPowerForSpec(item?(item.power||p.power):(($('power')?.value||p.power)||'')));
@@ -3432,7 +3432,7 @@ let noneMap={led:'LED: Without LED chip',driver:'LED Driver: Without LED driver'
 let qspec=productQuoteSpec(p);
 if(qspec.length){qspec.forEach(([label,val])=>{label=specLabel(label); if(label==='LED')add('LED',ledLineValue(val,item)); else add(label,val);});}
 for(let [k,label] of defs){let m=parts[k], outLabel=labelMap[k]||label;if(!m)continue;if(m.none){if(!qspec.length)lines.push((n++)+'. '+noneMap[k]);continue;}let val=quotePartSpecName(k,m,item);if(!val)continue;if(k==='extra'||k==='connector'){add(outLabel,val);continue;}if(!usedLabels.has(outLabel))add(outLabel,val);}
-let ip=item?(item.ip||''):normIp($('ip')?.value||'');if(cleanParam(ip))lines.push((n++)+'. '+ip);let remarks=item?quoteRemarksOfItem(item):quoteRemarksFromForm();remarks.forEach(x=>{x=cleanParam(x);if(x)lines.push((n++)+'. '+x)});return lines.join('\n')||'请选择产品和配件'}
+let ip=item?(item.ip||''):normIp($('ip')?.value||'');if(cleanParam(ip))lines.push((n++)+'. '+ip);let remarks=item?quoteRemarksOfItem(item):quoteRemarksFromForm();remarks.forEach(x=>{x=cleanParam(x);if(x)lines.push((n++)+'. '+x)});return quoteOrderSpec(lines.join('\n')||'请选择产品和配件',displayItem)}
 function quoteDocTitle(){let v=String($('quoteStatus')?.value||'Quotation sheet');if(/订购合同|purchase|contract/i.test(v))return '订购合同';return /proforma|invoice/i.test(v)?'PROFORMA INVOICE':'Quotation sheet'}
 function quoteOrderDocTitle(currency){let c=String(currency||cur()||'USD').trim().toUpperCase();return (c==='RMB'||c==='CNY'||c==='人民币')?'订购合同':'PROFORMA INVOICE'}
 function defaultQuoteTerms(){return [['PI Number:','QTNO'],['Payment:','40% Deposit before production'],['','60% payment before shipment'],['Price Terms:','EXWORK'],['Quoted Date:','DATE'],['Delivery Date:','25-35Days After Confirmed'],['Quoted Valid','Within 10 days']]}

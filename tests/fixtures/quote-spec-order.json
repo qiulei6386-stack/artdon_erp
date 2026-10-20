@@ -1,0 +1,383 @@
+[
+  {
+    "name": "screenshot_size_second_power_seventh",
+    "text": "1. SPECTRUM E LOW VOLTAGE TRACK LIGHT\n2. Size: Φ60×120mm\n3. Optic: OPAL\n4. LED: Bridgelux BXRE-40G20FD-C-8X 3000K CRI90\n5. Adapter: DALI 48V\n6. LED Driver: LIFUD LF-GDE020\n7. Power: 20W",
+    "item": {},
+    "expected": "1. SPECTRUM E LOW VOLTAGE TRACK LIGHT\n2. Power: 20W\n3. Size: Φ60×120mm\n4. Optic: OPAL\n5. LED: Bridgelux BXRE-40G20FD-C-8X 3000K CRI90\n6. Adapter: DALI 48V\n7. LED Driver: LIFUD LF-GDE020"
+  },
+  {
+    "name": "screenshot_power_second_size_third",
+    "text": "1. SPECTRUM E LOW VOLTAGE TRACK LIGHT\n2. Power: 20W\n3. Size: Φ60×120mm\n4. Optic: OPAL\n5. LED: Bridgelux BXRE-40G20FD-C-8X 3000K CRI90\n6. Adapter: DALI 48V\n7. LED Driver: LIFUD LF-GDE020",
+    "item": {},
+    "expected": "1. SPECTRUM E LOW VOLTAGE TRACK LIGHT\n2. Power: 20W\n3. Size: Φ60×120mm\n4. Optic: OPAL\n5. LED: Bridgelux BXRE-40G20FD-C-8X 3000K CRI90\n6. Adapter: DALI 48V\n7. LED Driver: LIFUD LF-GDE020"
+  },
+  {
+    "name": "all_fields_and_free_text",
+    "text": "1. SPECTRUM E LOW VOLTAGE TRACK LIGHT\n2. IP20\n3. Accessories: Honeycomb\n4. LED Driver: LIFUD LF-GDE020\n5. CRI90\n6. Size: Φ60×120mm\n7. Customer note: retain 1.35 exactly\n8. CCT: 4000K\n9. LED: Bridgelux BXRE-40G20FD-C-8X 3000K CRI90\n10. Power: 20W\n11. Cut out: Φ55mm\n12. Adapter: DALI 48V\n13. Beam Angle: 24°\n14. Optic: OPAL\n15. Other: carton retained",
+    "item": {},
+    "expected": "1. SPECTRUM E LOW VOLTAGE TRACK LIGHT\n2. Power: 20W\n3. Size: Φ60×120mm\n4. Cut out: Φ55mm\n5. Beam Angle: 24°\n6. Optic: OPAL\n7. LED: Bridgelux BXRE-40G20FD-C-8X 3000K CRI90\n8. Adapter: DALI 48V\n9. LED Driver: LIFUD LF-GDE020\n10. Accessories: Honeycomb\n11. CCT: 4000K\n12. CRI90\n13. IP20\n14. Customer note: retain 1.35 exactly\n15. Other: carton retained"
+  },
+  {
+    "name": "component_insertion_order_a",
+    "text": "1. SPECTRUM E LOW VOLTAGE TRACK LIGHT\n2. LED Driver: LIFUD LF-GDE020\n3. LED: Bridgelux BXRE-40G20FD-C-8X 3000K CRI90\n4. Accessories: Clip\n5. Adapter: DALI 48V\n6. Optic: OPAL\n7. Power: 20W\n8. Size: Φ60×120mm",
+    "item": {},
+    "expected": "1. SPECTRUM E LOW VOLTAGE TRACK LIGHT\n2. Power: 20W\n3. Size: Φ60×120mm\n4. Optic: OPAL\n5. LED: Bridgelux BXRE-40G20FD-C-8X 3000K CRI90\n6. Adapter: DALI 48V\n7. LED Driver: LIFUD LF-GDE020\n8. Accessories: Clip"
+  },
+  {
+    "name": "component_insertion_order_b",
+    "text": "1. SPECTRUM E LOW VOLTAGE TRACK LIGHT\n2. Accessories: Clip\n3. Adapter: DALI 48V\n4. LED Driver: LIFUD LF-GDE020\n5. Optic: OPAL\n6. LED: Bridgelux BXRE-40G20FD-C-8X 3000K CRI90\n7. Size: Φ60×120mm\n8. Power: 20W",
+    "item": {},
+    "expected": "1. SPECTRUM E LOW VOLTAGE TRACK LIGHT\n2. Power: 20W\n3. Size: Φ60×120mm\n4. Optic: OPAL\n5. LED: Bridgelux BXRE-40G20FD-C-8X 3000K CRI90\n6. Adapter: DALI 48V\n7. LED Driver: LIFUD LF-GDE020\n8. Accessories: Clip"
+  },
+  {
+    "name": "missing_fields_are_not_invented",
+    "text": "1. LED Driver: LIFUD LF-GDE020\n2. Unknown: keep\n3. Size: Φ60×120mm",
+    "item": {},
+    "expected": "1. Size: Φ60×120mm\n2. LED Driver: LIFUD LF-GDE020\n3. Unknown: keep"
+  },
+  {
+    "name": "duplicate_labels_different_values_remain_stable",
+    "text": "1. SPECTRUM E LOW VOLTAGE TRACK LIGHT\n2. Size: Φ60×120mm\n3. Power: 20W\n4. Power: 30W\n5. LED: Bridgelux BXRE-40G20FD-C-8X 3000K CRI90",
+    "item": {},
+    "expected": "1. SPECTRUM E LOW VOLTAGE TRACK LIGHT\n2. Power: 20W\n3. Power: 30W\n4. Size: Φ60×120mm\n5. LED: Bridgelux BXRE-40G20FD-C-8X 3000K CRI90"
+  },
+  {
+    "name": "multiline_and_internal_blank_lines_travel_with_their_field",
+    "text": "1. SPECTRUM E LOW VOLTAGE TRACK LIGHT\n2. IP65\n3. LED: BXRE-40G20FD-C-8X\n型号52.05522不得改\n1.35元参考\n\ncontinued description with 24V and 3000K\nkeep   exact   spacing\n4. Size: Φ60×120mm\n5. Power: 20W",
+    "item": {},
+    "expected": "1. SPECTRUM E LOW VOLTAGE TRACK LIGHT\n2. Power: 20W\n3. Size: Φ60×120mm\n4. LED: BXRE-40G20FD-C-8X\n型号52.05522不得改\n1.35元参考\n\ncontinued description with 24V and 3000K\nkeep   exact   spacing\n5. IP65"
+  },
+  {
+    "name": "decimal_model_and_note_digits_are_not_split",
+    "text": "1. LOTT 52.05522\n2. LED: BXRE-40G20FD-C-8X\n3. Size: 52.05522×1.35\n4. Power: 1.35W\n5. Price note: 1.35元\n52.05522\n2026-10-20",
+    "item": {},
+    "expected": "1. LOTT 52.05522\n2. Power: 1.35W\n3. Size: 52.05522×1.35\n4. LED: BXRE-40G20FD-C-8X\n5. Price note: 1.35元\n52.05522\n2026-10-20"
+  },
+  {
+    "name": "chinese_labels_keep_values_and_fullwidth_colons",
+    "text": "1. 测试系列\n2. 防护等级：IP44\n3. 电源：力福德 24V\n4. 芯片：普瑞 52.05522\n5. 光学：反光杯\n6. 接头：48V轨道头\n7. 尺寸：Φ60×120\n8. 功率：1.35W\n9. 附件：蜂窝网\n10. 显色指数：90\n11. 色温：3000K\n12. 光束角：24°\n13. 开孔尺寸：Φ55",
+    "item": {},
+    "expected": "1. 测试系列\n2. 功率：1.35W\n3. 尺寸：Φ60×120\n4. 开孔尺寸：Φ55\n5. 光束角：24°\n6. 光学：反光杯\n7. 芯片：普瑞 52.05522\n8. 接头：48V轨道头\n9. 电源：力福德 24V\n10. 附件：蜂窝网\n11. 色温：3000K\n12. 显色指数：90\n13. 防护等级：IP44"
+  },
+  {
+    "name": "standalone_cct_cri_and_ip",
+    "text": "1. SPECTRUM E LOW VOLTAGE TRACK LIGHT\n2. IP20\n3. CRI90\n4. CCT 3000K\n5. LED Driver: LIFUD LF-GDE020\n6. Power: 20W",
+    "item": {},
+    "expected": "1. SPECTRUM E LOW VOLTAGE TRACK LIGHT\n2. Power: 20W\n3. LED Driver: LIFUD LF-GDE020\n4. CCT 3000K\n5. CRI90\n6. IP20"
+  },
+  {
+    "name": "bare_kelvin_is_cct",
+    "text": "1. SPECTRUM E LOW VOLTAGE TRACK LIGHT\n2. IP65\n3. 4000K\n4. Ra95\n5. Power: 20W",
+    "item": {},
+    "expected": "1. SPECTRUM E LOW VOLTAGE TRACK LIGHT\n2. Power: 20W\n3. 4000K\n4. Ra95\n5. IP65"
+  },
+  {
+    "name": "unknown_labels_and_free_text_keep_their_relative_order",
+    "text": "1. SPECTRUM E LOW VOLTAGE TRACK LIGHT\n2. Custom Alpha: first\n3. Unstructured customer instructions\n4. Size: Φ60×120mm\n5. Warranty: 5 years\n6. Power: 20W",
+    "item": {},
+    "expected": "1. SPECTRUM E LOW VOLTAGE TRACK LIGHT\n2. Power: 20W\n3. Size: Φ60×120mm\n4. Custom Alpha: first\n5. Unstructured customer instructions\n6. Warranty: 5 years"
+  },
+  {
+    "name": "six_explicit_remarks_are_not_sorted_as_parameters",
+    "text": "1. SPECTRUM E LOW VOLTAGE TRACK LIGHT\n2. Size: Φ60×120mm\n3. Power: 20W\n4. LED: Bridgelux BXRE-40G20FD-C-8X 3000K CRI90\n5. Power: customer note only\n6. Size: note 52.05522\n7. LED: no substitution\n8. CCT: note 1.35\n9. IP20\n10. Sixth note retained",
+    "item": {
+      "quote_remarks": [
+        "Power: customer note only",
+        "Size: note 52.05522",
+        "LED: no substitution",
+        "CCT: note 1.35",
+        "IP20",
+        "Sixth note retained"
+      ]
+    },
+    "expected": "1. SPECTRUM E LOW VOLTAGE TRACK LIGHT\n2. Power: 20W\n3. Size: Φ60×120mm\n4. LED: Bridgelux BXRE-40G20FD-C-8X 3000K CRI90\n5. Power: customer note only\n6. Size: note 52.05522\n7. LED: no substitution\n8. CCT: note 1.35\n9. IP20\n10. Sixth note retained"
+  },
+  {
+    "name": "six_extra_spec_remarks_are_not_truncated",
+    "text": "1. SPECTRUM E LOW VOLTAGE TRACK LIGHT\n2. Size: Φ60×120mm\n3. Power: 20W\n4. LED: Bridgelux BXRE-40G20FD-C-8X 3000K CRI90\n5. Power: customer note only\n6. Size: note 52.05522\n7. LED: no substitution\n8. CCT: note 1.35\n9. IP20\n10. Sixth note retained",
+    "item": {
+      "extra_spec": "Power: customer note only\nSize: note 52.05522\nLED: no substitution\nCCT: note 1.35\nIP20\nSixth note retained"
+    },
+    "expected": "1. SPECTRUM E LOW VOLTAGE TRACK LIGHT\n2. Power: 20W\n3. Size: Φ60×120mm\n4. LED: Bridgelux BXRE-40G20FD-C-8X 3000K CRI90\n5. Power: customer note only\n6. Size: note 52.05522\n7. LED: no substitution\n8. CCT: note 1.35\n9. IP20\n10. Sixth note retained"
+  },
+  {
+    "name": "multiline_explicit_tail_remark",
+    "text": "1. SPECTRUM E LOW VOLTAGE TRACK LIGHT\n2. Size: Φ60×120mm\n3. Power: 20W\n4. IP20\n5. Power: custom note\ncontinued note 52.05522 and 1.35",
+    "item": {
+      "quote_remarks": [
+        "Power: custom note\ncontinued note 52.05522 and 1.35"
+      ]
+    },
+    "expected": "1. SPECTRUM E LOW VOLTAGE TRACK LIGHT\n2. Power: 20W\n3. Size: Φ60×120mm\n4. IP20\n5. Power: custom note\ncontinued note 52.05522 and 1.35"
+  },
+  {
+    "name": "matching_parameter_earlier_is_not_mistaken_for_the_tail_note",
+    "text": "1. SPECTRUM E LOW VOLTAGE TRACK LIGHT\n2. LED Driver: X\n3. Power: customer text\n4. IP20\n5. Power: customer text",
+    "item": {
+      "quote_remarks": [
+        "Power: customer text"
+      ]
+    },
+    "expected": "1. SPECTRUM E LOW VOLTAGE TRACK LIGHT\n2. Power: customer text\n3. LED Driver: X\n4. IP20\n5. Power: customer text"
+  },
+  {
+    "name": "extra_spec_that_is_a_full_spec_is_not_a_tail_remark",
+    "text": "1. SPECTRUM E LOW VOLTAGE TRACK LIGHT\n2. Size: Φ60×120mm\n3. Power: 20W",
+    "item": {
+      "extra_spec": "1. SPECTRUM E LOW VOLTAGE TRACK LIGHT\n2. Size: Φ60×120mm\n3. Power: 20W"
+    },
+    "expected": "1. SPECTRUM E LOW VOLTAGE TRACK LIGHT\n2. Power: 20W\n3. Size: Φ60×120mm"
+  },
+  {
+    "name": "already_sorted_keeps_original_whitespace_and_crlf",
+    "text": "\r\n  1.   SPECTRUM E\r\n\t2.\tPower: 20W  \r\n3. Size: Φ60×120\r\n\r\n",
+    "item": {},
+    "expected": "\r\n  1.   SPECTRUM E\r\n\t2.\tPower: 20W  \r\n3. Size: Φ60×120\r\n\r\n"
+  },
+  {
+    "name": "reordered_crlf_preserves_line_ending_style",
+    "text": "1. SPECTRUM E LOW VOLTAGE TRACK LIGHT\r\n2. Size: Φ60×120mm\r\n3. Power: 20W\r\n",
+    "item": {},
+    "expected": "1. SPECTRUM E LOW VOLTAGE TRACK LIGHT\r\n2. Power: 20W\r\n3. Size: Φ60×120mm\r\n"
+  },
+  {
+    "name": "outer_blank_lines_are_preserved",
+    "text": "\n\n1. SPECTRUM E LOW VOLTAGE TRACK LIGHT\n2. Size: Φ60×120mm\n3. Power: 20W\n\n",
+    "item": {},
+    "expected": "\n\n1. SPECTRUM E LOW VOLTAGE TRACK LIGHT\n2. Power: 20W\n3. Size: Φ60×120mm\n\n"
+  },
+  {
+    "name": "pure_manual_non_numbered_prose",
+    "text": "SPECTRUM E\nSize: Φ60×120\nPower: 20W",
+    "item": {},
+    "expected": "SPECTRUM E\nSize: Φ60×120\nPower: 20W"
+  },
+  {
+    "name": "pure_manual_numbered_free_prose",
+    "text": "1. Custom instruction A\n2. Custom instruction B",
+    "item": {},
+    "expected": "1. Custom instruction A\n2. Custom instruction B"
+  },
+  {
+    "name": "single_numbered_item",
+    "text": "1. Power: 20W",
+    "item": {},
+    "expected": "1. Power: 20W"
+  },
+  {
+    "name": "wrong_first_number",
+    "text": "2. Size: Φ60×120\n3. Power: 20W",
+    "item": {},
+    "expected": "2. Size: Φ60×120\n3. Power: 20W"
+  },
+  {
+    "name": "numbering_gap",
+    "text": "1. SPECTRUM E\n2. Size: Φ60×120\n4. Power: 20W",
+    "item": {},
+    "expected": "1. SPECTRUM E\n2. Size: Φ60×120\n4. Power: 20W"
+  },
+  {
+    "name": "duplicate_number",
+    "text": "1. SPECTRUM E\n2. Size: Φ60×120\n2. Power: 20W",
+    "item": {},
+    "expected": "1. SPECTRUM E\n2. Size: Φ60×120\n2. Power: 20W"
+  },
+  {
+    "name": "leading_zero_number",
+    "text": "01. SPECTRUM E\n02. Size: Φ60×120\n03. Power: 20W",
+    "item": {},
+    "expected": "01. SPECTRUM E\n02. Size: Φ60×120\n03. Power: 20W"
+  },
+  {
+    "name": "zero_number",
+    "text": "0. SPECTRUM E\n1. Size: Φ60×120\n2. Power: 20W",
+    "item": {},
+    "expected": "0. SPECTRUM E\n1. Size: Φ60×120\n2. Power: 20W"
+  },
+  {
+    "name": "ambiguous_missing_numbering_space",
+    "text": "1. SPECTRUM E\n2. Size: Φ60×120\n3.Power: 20W",
+    "item": {},
+    "expected": "1. SPECTRUM E\n2. Size: Φ60×120\n3.Power: 20W"
+  },
+  {
+    "name": "numbered_preamble_is_not_guessed",
+    "text": "Customer instructions\n1. Size: Φ60×120\n2. Power: 20W",
+    "item": {},
+    "expected": "Customer instructions\n1. Size: Φ60×120\n2. Power: 20W"
+  },
+  {
+    "name": "empty_numbered_item_is_ambiguous",
+    "text": "1. SPECTRUM E\n2. \n3. Size: Φ60×120\n4. Power: 20W",
+    "item": {},
+    "expected": "1. SPECTRUM E\n2. \n3. Size: Φ60×120\n4. Power: 20W"
+  },
+  {
+    "name": "mixed_line_endings_fall_back",
+    "text": "1. SPECTRUM E\r\n2. Size: Φ60×120\n3. Power: 20W",
+    "item": {},
+    "expected": "1. SPECTRUM E\r\n2. Size: Φ60×120\n3. Power: 20W"
+  },
+  {
+    "name": "decimal_model_at_line_start_is_continuation",
+    "text": "1. SPECTRUM E LOW VOLTAGE TRACK LIGHT\n2. Size: 60mm\n52.05522\n1.35W\n3. Power: 20W",
+    "item": {},
+    "expected": "1. SPECTRUM E LOW VOLTAGE TRACK LIGHT\n2. Power: 20W\n3. Size: 60mm\n52.05522\n1.35W"
+  },
+  {
+    "name": "ten_and_later_items_are_not_limited_to_one_digit",
+    "text": "1. SPECTRUM E LOW VOLTAGE TRACK LIGHT\n2. IP20\n3. Custom A: a\n4. LED Driver: LIFUD LF-GDE020\n5. Custom B: b\n6. Size: Φ60×120mm\n7. Custom C: c\n8. LED: Bridgelux BXRE-40G20FD-C-8X 3000K CRI90\n9. Power: 20W\n10. Adapter: DALI 48V\n11. Optic: OPAL",
+    "item": {},
+    "expected": "1. SPECTRUM E LOW VOLTAGE TRACK LIGHT\n2. Power: 20W\n3. Size: Φ60×120mm\n4. Optic: OPAL\n5. LED: Bridgelux BXRE-40G20FD-C-8X 3000K CRI90\n6. Adapter: DALI 48V\n7. LED Driver: LIFUD LF-GDE020\n8. IP20\n9. Custom A: a\n10. Custom B: b\n11. Custom C: c"
+  },
+  {
+    "name": "exclude_order_snapshot",
+    "text": "1. SPECTRUM E LOW VOLTAGE TRACK LIGHT\n2. Size: Φ60×120mm\n3. LED: Bridgelux BXRE-40G20FD-C-8X 3000K CRI90\n4. Power: 20W",
+    "item": {
+      "is_order_snapshot": true
+    },
+    "expected": "1. SPECTRUM E LOW VOLTAGE TRACK LIGHT\n2. Size: Φ60×120mm\n3. LED: Bridgelux BXRE-40G20FD-C-8X 3000K CRI90\n4. Power: 20W"
+  },
+  {
+    "name": "exclude_material_sale_flag",
+    "text": "1. SPECTRUM E LOW VOLTAGE TRACK LIGHT\n2. Size: Φ60×120mm\n3. LED: Bridgelux BXRE-40G20FD-C-8X 3000K CRI90\n4. Power: 20W",
+    "item": {
+      "is_material_sale": true
+    },
+    "expected": "1. SPECTRUM E LOW VOLTAGE TRACK LIGHT\n2. Size: Φ60×120mm\n3. LED: Bridgelux BXRE-40G20FD-C-8X 3000K CRI90\n4. Power: 20W"
+  },
+  {
+    "name": "exclude_material_type",
+    "text": "1. SPECTRUM E LOW VOLTAGE TRACK LIGHT\n2. Size: Φ60×120mm\n3. LED: Bridgelux BXRE-40G20FD-C-8X 3000K CRI90\n4. Power: 20W",
+    "item": {
+      "product_type": "material"
+    },
+    "expected": "1. SPECTRUM E LOW VOLTAGE TRACK LIGHT\n2. Size: Φ60×120mm\n3. LED: Bridgelux BXRE-40G20FD-C-8X 3000K CRI90\n4. Power: 20W"
+  },
+  {
+    "name": "exclude_material_id",
+    "text": "1. SPECTRUM E LOW VOLTAGE TRACK LIGHT\n2. Size: Φ60×120mm\n3. LED: Bridgelux BXRE-40G20FD-C-8X 3000K CRI90\n4. Power: 20W",
+    "item": {
+      "product": {
+        "id": "mat-123"
+      }
+    },
+    "expected": "1. SPECTRUM E LOW VOLTAGE TRACK LIGHT\n2. Size: Φ60×120mm\n3. LED: Bridgelux BXRE-40G20FD-C-8X 3000K CRI90\n4. Power: 20W"
+  },
+  {
+    "name": "exclude_item_type_virtual",
+    "text": "1. SPECTRUM E LOW VOLTAGE TRACK LIGHT\n2. Size: Φ60×120mm\n3. LED: Bridgelux BXRE-40G20FD-C-8X 3000K CRI90\n4. Power: 20W",
+    "item": {
+      "item_type": "virtual"
+    },
+    "expected": "1. SPECTRUM E LOW VOLTAGE TRACK LIGHT\n2. Size: Φ60×120mm\n3. LED: Bridgelux BXRE-40G20FD-C-8X 3000K CRI90\n4. Power: 20W"
+  },
+  {
+    "name": "exclude_product_type_virtual",
+    "text": "1. SPECTRUM E LOW VOLTAGE TRACK LIGHT\n2. Size: Φ60×120mm\n3. LED: Bridgelux BXRE-40G20FD-C-8X 3000K CRI90\n4. Power: 20W",
+    "item": {
+      "product_type": "virtual"
+    },
+    "expected": "1. SPECTRUM E LOW VOLTAGE TRACK LIGHT\n2. Size: Φ60×120mm\n3. LED: Bridgelux BXRE-40G20FD-C-8X 3000K CRI90\n4. Power: 20W"
+  },
+  {
+    "name": "exclude_virtual_flag",
+    "text": "1. SPECTRUM E LOW VOLTAGE TRACK LIGHT\n2. Size: Φ60×120mm\n3. LED: Bridgelux BXRE-40G20FD-C-8X 3000K CRI90\n4. Power: 20W",
+    "item": {
+      "is_virtual_item": true
+    },
+    "expected": "1. SPECTRUM E LOW VOLTAGE TRACK LIGHT\n2. Size: Φ60×120mm\n3. LED: Bridgelux BXRE-40G20FD-C-8X 3000K CRI90\n4. Power: 20W"
+  },
+  {
+    "name": "exclude_virtual_type",
+    "text": "1. SPECTRUM E LOW VOLTAGE TRACK LIGHT\n2. Size: Φ60×120mm\n3. LED: Bridgelux BXRE-40G20FD-C-8X 3000K CRI90\n4. Power: 20W",
+    "item": {
+      "virtual_type": "freight"
+    },
+    "expected": "1. SPECTRUM E LOW VOLTAGE TRACK LIGHT\n2. Size: Φ60×120mm\n3. LED: Bridgelux BXRE-40G20FD-C-8X 3000K CRI90\n4. Power: 20W"
+  },
+  {
+    "name": "exclude_non_shippable_bool",
+    "text": "1. SPECTRUM E LOW VOLTAGE TRACK LIGHT\n2. Size: Φ60×120mm\n3. LED: Bridgelux BXRE-40G20FD-C-8X 3000K CRI90\n4. Power: 20W",
+    "item": {
+      "shippable": false
+    },
+    "expected": "1. SPECTRUM E LOW VOLTAGE TRACK LIGHT\n2. Size: Φ60×120mm\n3. LED: Bridgelux BXRE-40G20FD-C-8X 3000K CRI90\n4. Power: 20W"
+  },
+  {
+    "name": "exclude_non_shippable_zero",
+    "text": "1. SPECTRUM E LOW VOLTAGE TRACK LIGHT\n2. Size: Φ60×120mm\n3. LED: Bridgelux BXRE-40G20FD-C-8X 3000K CRI90\n4. Power: 20W",
+    "item": {
+      "shippable": 0
+    },
+    "expected": "1. SPECTRUM E LOW VOLTAGE TRACK LIGHT\n2. Size: Φ60×120mm\n3. LED: Bridgelux BXRE-40G20FD-C-8X 3000K CRI90\n4. Power: 20W"
+  },
+  {
+    "name": "exclude_non_shippable_string",
+    "text": "1. SPECTRUM E LOW VOLTAGE TRACK LIGHT\n2. Size: Φ60×120mm\n3. LED: Bridgelux BXRE-40G20FD-C-8X 3000K CRI90\n4. Power: 20W",
+    "item": {
+      "shippable": "false"
+    },
+    "expected": "1. SPECTRUM E LOW VOLTAGE TRACK LIGHT\n2. Size: Φ60×120mm\n3. LED: Bridgelux BXRE-40G20FD-C-8X 3000K CRI90\n4. Power: 20W"
+  },
+  {
+    "name": "empty",
+    "text": "",
+    "item": {},
+    "expected": ""
+  },
+  {
+    "name": "whitespace_only",
+    "text": " \t\n　",
+    "item": {},
+    "expected": " \t\n　"
+  },
+  {
+    "name": "explicit_series_label_Series",
+    "text": "1. Size: 60mm\n2. Series: SPECTRUM E\n3. Power: 20W",
+    "item": {},
+    "expected": "1. Series: SPECTRUM E\n2. Power: 20W\n3. Size: 60mm"
+  },
+  {
+    "name": "explicit_series_label_Series Name",
+    "text": "1. Size: 60mm\n2. Series Name: SPECTRUM E\n3. Power: 20W",
+    "item": {},
+    "expected": "1. Series Name: SPECTRUM E\n2. Power: 20W\n3. Size: 60mm"
+  },
+  {
+    "name": "explicit_series_label_Product Name",
+    "text": "1. Size: 60mm\n2. Product Name: SPECTRUM E\n3. Power: 20W",
+    "item": {},
+    "expected": "1. Product Name: SPECTRUM E\n2. Power: 20W\n3. Size: 60mm"
+  },
+  {
+    "name": "explicit_series_label_Product",
+    "text": "1. Size: 60mm\n2. Product: SPECTRUM E\n3. Power: 20W",
+    "item": {},
+    "expected": "1. Product: SPECTRUM E\n2. Power: 20W\n3. Size: 60mm"
+  },
+  {
+    "name": "explicit_series_label_系列",
+    "text": "1. Size: 60mm\n2. 系列: SPECTRUM E\n3. Power: 20W",
+    "item": {},
+    "expected": "1. 系列: SPECTRUM E\n2. Power: 20W\n3. Size: 60mm"
+  },
+  {
+    "name": "explicit_series_label_系列名称",
+    "text": "1. Size: 60mm\n2. 系列名称: SPECTRUM E\n3. Power: 20W",
+    "item": {},
+    "expected": "1. 系列名称: SPECTRUM E\n2. Power: 20W\n3. Size: 60mm"
+  },
+  {
+    "name": "explicit_series_label_产品名称",
+    "text": "1. Size: 60mm\n2. 产品名称: SPECTRUM E\n3. Power: 20W",
+    "item": {},
+    "expected": "1. 产品名称: SPECTRUM E\n2. Power: 20W\n3. Size: 60mm"
+  },
+  {
+    "name": "explicit_series_label_品名",
+    "text": "1. Size: 60mm\n2. 品名: SPECTRUM E\n3. Power: 20W",
+    "item": {},
+    "expected": "1. 品名: SPECTRUM E\n2. Power: 20W\n3. Size: 60mm"
+  }
+]

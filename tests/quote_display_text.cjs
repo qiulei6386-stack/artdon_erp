@@ -4,9 +4,15 @@ new vm.Script(js);
 function original(name){const a=source.indexOf('function '+name+'('),end=source.slice(a+1).search(/\n(?:async )?function /);assert(a>=0&&end>0,name);return source.slice(a,a+1+end);}
 const functions=['quoteDisplayCanEdit','quoteDisplayDescriptionLines','quoteDisplayDescription','quotePrepareDisplayItem','quoteDisplayManualSpec','normCct','normCri','normIp','cleanPowerValue','formatPowerForSpec','cleanBeamAngleValue','formatBeamAngleForSpec','normalizeBeamAngleField','quoteRemarksOfItem','quoteRemarksFromForm','setQuoteRemarksToForm','bind','isEmptyParam','cleanParam','specLabel','quotePartStopWords','quoteDropMaterialNameTokens','quoteDisplayNorm','quoteBrandCandidate','quoteJoinBrandModel','quoteModelFromAsciiText','quoteBrandFromAsciiText','quoteBrandModelOnly','productQuoteSpec','ledLineValue','partDefsByType','buildSpec','currentEditorItem','loadItemToEditor','syncEditingItemFromForm'];
 const originals=functions.map(original).join('\n');new vm.Script(originals);
-const pure={isMaterialSaleItem:()=>false,isVirtualQuoteItem:()=>false,clone:x=>JSON.parse(JSON.stringify(x)),quoteMoneyRow:(q,p)=>q*p};vm.createContext(pure);vm.runInContext(originals+'\n'+original('piOrderItemFromQuote')+'\n'+original('mergeOrderItemWithQuoteSnapshot'),pure);
+const pure={quoteOrderSpec:require('../assets/quote-spec-order.js'),isMaterialSaleItem:()=>false,isVirtualQuoteItem:()=>false,clone:x=>JSON.parse(JSON.stringify(x)),quoteMoneyRow:(q,p)=>q*p};vm.createContext(pure);vm.runInContext(originals+'\n'+original('piOrderItemFromQuote')+'\n'+original('mergeOrderItemWithQuoteSnapshot'),pure);
 assert.equal(pure.quoteDisplayDescription('1. 52.98765 Test lamp',{}),'52.98765 Test lamp','numbering cleanup preserves decimal product model');
 for(const fixture of JSON.parse(fs.readFileSync('tests/fixtures/quote-display-parameters.json','utf8'))){const before=JSON.stringify(fixture.item);assert.equal(pure.buildSpec(fixture.item),fixture.expected,fixture.name);assert.equal(JSON.stringify(fixture.item),before,'render does not mutate saved source');}
+// Exercise the real automatic branch with deliberately shuffled component insertion order.
+pure.productSeriesLine=p=>p.series||p.name||'';pure.quoteDisplaySize=p=>p.size||'';pure.quoteDisplayCutout=()=>'';
+const automatic={product:{series:'Fixture lamp',power:'10W',size:'220*22',quote_spec:{driver:{label:'LED Driver',value:'LIFUD LF-GDE020'},led:{label:'LED',value:'TEST-2835'},optic:{label:'Optic',value:'OPAL'}}},parts:{},product_type:'track',beam_angle:'90',cct:'3000K',cri:'CRI90',ip:'IP20'};
+const autoBefore=JSON.stringify(automatic);
+assert.equal(pure.buildSpec(automatic),'1. Fixture lamp\n2. Power: 10W\n3. Size: 220*22\n4. Beam Angle: 90°\n5. Optic: OPAL\n6. LED: TEST-2835 3000K CRI90\n7. LED Driver: LIFUD GDE020\n8. IP20');
+assert.equal(JSON.stringify(automatic),autoBefore,'automatic rendering does not mutate item or component order');
 const sourceItem={product:{quote_spec_display_override:''},specification:'STALE',extra_spec:'OLD',qty:1,price:2};
 assert.equal(pure.buildSpec(sourceItem),'');assert.equal(pure.piOrderItemFromQuote(sourceItem).specification,'','empty text stays empty at conversion');
 for(const text of ['New order wording','']){const item=pure.mergeOrderItemWithQuoteSnapshot({specification:text},sourceItem,0);assert.equal(pure.buildSpec(item),text,'order edits have priority over source quote text');}
@@ -22,6 +28,7 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
   const ids=['qty','manualPrice','moq','customerCode','beamAngle','power','color','cct','cri','ip','extraSpec','priceMultiplierCustom','productType','productSelect','priceLevel','remark1','remark2','remark3','remark4'];
   await page.route('**/*',r=>r.request().url()==='https://quote-display.test/'?r.fulfill({contentType:'text/html',body:'<!doctype html><meta charset="utf-8"><style>'+fs.readFileSync('assets/quote-display-text.css','utf8')+'</style><div id="productLinkHint"><button id="edit" onclick="QuoteDisplayText.open()">修改报价文字</button></div>'+ids.map(id=>`<input id="${id}">`).join('')+'<pre id="preview"></pre>'}):r.abort());
   await page.goto('https://quote-display.test/');
+  await page.addScriptTag({content:fs.readFileSync('assets/quote-spec-order.js','utf8')});
   await page.addScriptTag({content:`const $=id=>document.getElementById(id),clone=x=>JSON.parse(JSON.stringify(x)),esc=x=>String(x??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
   const master={id:'TEST',code:'52.98765',name:'Test lamp',cost_rmb:50,quote_spec:{optic:{label:'Optic',value:'反光纸内部规格'}},bom_version:{snapshot_id:-1,digest:'immutable'}};
   let S={product:null,items:[{product:clone(master),qty:2,price:30,amount:60,parts:{},product_type:'track'},{product:clone(master),qty:1,price:30,parts:{}}],editingIndex:0,currentQuoteId:0,currentApprovalStatus:'new'},allowed=true,QUOTE_PRICE_POLICY_MATCH=null;

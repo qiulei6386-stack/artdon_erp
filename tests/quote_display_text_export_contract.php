@@ -22,6 +22,19 @@ foreach(json_decode(file_get_contents(__DIR__.'/fixtures/quote-display-parameter
     qe_build_xlsx(['quote_no'=>'QA-LIVE','currency'=>'USD','items'=>[array_merge($fixture['item'],['qty'=>10,'price'=>15,'amount'=>150])],'total'=>['qty'=>10,'amount'=>150]]);
     foreach(explode("\n",$fixture['expected']) as $line)qdt_check(strpos($GLOBALS['qdt_xml']['xl/worksheets/sheet1.xml'],qe_xml($line))!==false,'actual Excel XML live parameter');
 }
+// Both saved text and frozen manual wording must use the same display order.
+$unordered="1. Fixture lamp\n2. Size: 220*22\n3. IP20\n4. Power: 10W\n5. Beam Angle: 90°\n6. Keep note 1.35";
+$ordered="1. Fixture lamp\n2. Power: 10W\n3. Size: 220*22\n4. Beam Angle: 90°\n5. IP20\n6. Keep note 1.35";
+foreach([false,true] as $manualOverride){
+    $saved=['product'=>['name'=>'Fixture lamp','power'=>'999W'], 'specification'=>$unordered,'qty'=>2,'price'=>30,'amount'=>60];
+    if($manualOverride)$saved['product']['quote_spec_display_override']=$unordered;
+    $before=json_encode($saved);
+    qdt_check(build_spec($saved)===$ordered,'PDF saved/manual text order and original parameter values');
+    qdt_check(qe_item_spec($saved)===$ordered,'Excel saved/manual text order and original parameter values');
+    qdt_check(json_encode($saved)===$before,'saved/manual source and amounts remain unchanged');
+    qe_build_xlsx(['quote_no'=>'QA-ORDERING','currency'=>'USD','items'=>[$saved],'total'=>['qty'=>2,'amount'=>60]]);
+    qdt_check(strpos($GLOBALS['qdt_xml']['xl/worksheets/sheet1.xml'],qe_xml($ordered))!==false,'actual Excel cell retains normalized specification order');
+}
 foreach([$manual,'','中文自定义说明','0'] as $text){
     $item['product']['quote_spec_display_override']=$text;
     $roundtrip=json_decode(json_encode($item,JSON_THROW_ON_ERROR),true,512,JSON_THROW_ON_ERROR);

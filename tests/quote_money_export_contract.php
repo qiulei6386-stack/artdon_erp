@@ -1,6 +1,7 @@
 <?php
 // Exercise the real Excel builder without file/network output; capture its XML package.
 declare(strict_types=1);
+require_once dirname(__DIR__).'/includes/quote_spec_order.php';
 $root=dirname(__DIR__);$excel=file_get_contents($root.'/crm_quote_excel.php');
 $start=strpos($excel,'function qe_json_decode(');$end=strpos($excel,'$payload=qe_apply_approved_snapshot(qe_get_payload());');
 if($start===false||$end===false)throw new RuntimeException('Excel function boundaries missing');

@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__.'/includes/quote_money.php';
 require_once __DIR__.'/includes/quote_display_text.php';
+require_once __DIR__.'/includes/quote_spec_order.php';
 /**
  * Artdon Quotation PDF Export V6.8.5.21 Quote/Order Unified Spec
  * Syncs quotation preview format to PDF/print export:
@@ -390,13 +391,13 @@ function product_quote_spec($p): array {
     return $out;
 }
 function build_spec($item): string {
-    if(is_string($item['product']['quote_spec_display_override']??null))return qdt_render_manual($item);
+    if(is_string($item['product']['quote_spec_display_override']??null))return qso_order_spec(qdt_render_manual($item),$item);
     // V6.8.5.21：已保存报价/已转订单如果带有完整 Specification，导出时优先原样使用。
     // 避免订单导出只剩产品、功率、尺寸、开孔，丢失 LED / Driver / Optic / IP 等原报价参数。
     $savedSpec = clean_param(arr_get($item, 'specification', ''));
     if ($savedSpec !== '') {
         $safeSavedSpec = quote_sanitize_saved_spec($savedSpec,$item);
-        if ($safeSavedSpec !== '') return $safeSavedSpec;
+        if ($safeSavedSpec !== '') return qso_order_spec($safeSavedSpec,$item);
     }
     $p = is_array(arr_get($item, 'product', [])) ? arr_get($item, 'product', []) : [];
     $parts = is_array(arr_get($item, 'parts', [])) ? arr_get($item, 'parts', []) : [];
@@ -424,7 +425,7 @@ function build_spec($item): string {
     if ($ip!=='') $lines[]=($n++).'. '.$ip;
     foreach (quote_remarks_of_item($item) as $x) { $x=quote_pdf_public_product_text($x); if($x!=='') $lines[]=($n++).'. '.$x; }
     $lines = quote_pdf_spec_lines_for_export($lines);
-    return $lines ? implode("\n", $lines) : 'Please select product and accessories';
+    return qso_order_spec($lines ? implode("\n", $lines) : 'Please select product and accessories',$item);
 }
 function quote_pdf_is_virtual_item($it): bool {
     if (!is_array($it)) return false;

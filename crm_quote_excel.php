@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__.'/includes/quote_money.php';
 require_once __DIR__.'/includes/quote_display_text.php';
+require_once __DIR__.'/includes/quote_spec_order.php';
 /* ARTDON_SSO_GATE_V2_START */
 require_once __DIR__.'/includes/artdon_sso_core.php';
 // Excel 是已登录报价页发起的 POST 下载；这里只校验登录，导出权限由下方
@@ -164,10 +165,10 @@ function qe_adjustment_label($payload){
   return $label!==''?$label:'Adjustment';
 }
 function qe_item_spec($it){
-  if(is_string($it['product']['quote_spec_display_override']??null))return qdt_render_manual($it);
+  if(is_string($it['product']['quote_spec_display_override']??null))return qso_order_spec(qdt_render_manual($it),$it);
   // V6.8.5.21：报价/订单导出 Excel 与 PDF 同步，优先使用订单/报价保存时的完整 Specification。
   $saved=qe_clean_param($it['specification']??'');
-  if($saved!=='') return qe_sanitize_saved_spec($saved,$it);
+  if($saved!=='') return qso_order_spec(qe_sanitize_saved_spec($saved,$it),$it);
   $p=(isset($it['product'])&&is_array($it['product']))?$it['product']:[];
   if(qe_is_material_sale($it)){
     $ml=[]; $base=trim(qe_product_brand_model($p));
@@ -191,7 +192,7 @@ function qe_item_spec($it){
   }
   $ip=qe_norm_ip($it['ip']??''); if($ip!=='') $lines[]=($n++).'. '.$ip;
   foreach(qe_item_remarks($it) as $rv){ $lines[]=($n++).'. '.$rv; }
-  return implode("\n",$lines);
+  return qso_order_spec(implode("\n",$lines),$it);
 }
 function qe_len($s){ return function_exists('mb_strlen') ? mb_strlen((string)$s,'UTF-8') : strlen((string)$s); }
 function qe_item_row_height($it){
