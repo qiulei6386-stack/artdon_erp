@@ -29,7 +29,7 @@ window.QuoteDisplayText=(()=>{
     // Change only the quoted display field, preserving the row's prices and source snapshot.
     const item=S.items?.[S.editingIndex];
     if(item){
-      if(restore){delete item.product[field];delete item.product.quote_spec_display_mode;}else{item.product[field]=text;item.product.quote_spec_display_mode='live_parameters';}
+      if(restore){delete item.product[field];delete item.product.quote_spec_display_mode;delete item.specification;}else{item.product[field]=text;item.product.quote_spec_display_mode='live_parameters';}
       item.specification=buildSpec(item);
     }else autoAddSelectedProductLine();
     close();updateProductLinkHint();renderQuoteItems();render();

@@ -5452,5 +5452,5 @@ function printOrderStatement(key){
 <link rel="stylesheet" href="assets/quote-bom-versions.css?v=20260921-1">
 <script src="assets/quote-bom-versions.js?v=20260921-3"></script>
 <link rel="stylesheet" href="assets/quote-display-text.css?v=20261009-1">
-<script src="assets/quote-display-text.js?v=20261009-2"></script>
+<script src="assets/quote-display-text.js?v=20261020-1"></script>
 </body></html>

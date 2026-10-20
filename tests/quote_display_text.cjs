@@ -20,6 +20,19 @@ assert.equal(pure.buildSpec(savedText),'1. Customer supplied lamp\n2. Power: 14W
 assert.equal(JSON.stringify(savedText),savedBefore,'historical manual values and snapshot remain unchanged');
 const freshParameters={product:{series:'Old series',size:'220*22'},parts:{},product_type:'track',power:'25W'};
 assert(pure.buildSpec(freshParameters).includes('Power: 25W'),'fresh editor parameters without saved specification keep updating live');
+// Run the real restore handler directly with non-empty manual/historical wording.
+const applyStart=js.indexOf('  function apply(restore){'),applyEnd=js.indexOf('\n  return {open,close};',applyStart);
+assert(applyStart>=0&&applyEnd>applyStart,'restore handler boundaries');
+for(const hasOverride of [true,false]){
+ const item=JSON.parse(JSON.stringify(automatic));item.specification='1. Customer manual wording\n2. Power: 14W';item.qty=2;item.price=30;item.amount=60;
+ if(hasOverride)item.product.quote_spec_display_override=item.specification;
+ const ctx={S:{product:JSON.parse(JSON.stringify(item.product)),items:[item],editingIndex:0},field:'quote_spec_display_override',same:()=>true,locked:()=>false,$:()=>({value:'Customer manual wording'}),currentEditorItem:()=>({}),quoteDisplayDescription:()=>'',buildSpec:pure.buildSpec,close:()=>{},updateProductLinkHint:()=>{},renderQuoteItems:()=>{},render:()=>{},alert:m=>{throw Error(m)}};
+ vm.createContext(ctx);vm.runInContext(js.slice(applyStart,applyEnd),ctx);ctx.apply(true);
+ assert(!item.specification.includes('Customer manual wording'),'direct restore replaces non-empty manual text');
+ assert(item.specification.includes('Power: 10W'),'direct restore rebuilds automatic parameters');
+ assert.equal(item.price,30);assert.equal(item.qty,2);assert.equal(item.amount,60);
+ assert.equal(Object.hasOwn(item.product,'quote_spec_display_override'),false);
+}
 const sourceItem={product:{quote_spec_display_override:''},specification:'STALE',extra_spec:'OLD',qty:1,price:2};
 assert.equal(pure.buildSpec(sourceItem),'');assert.equal(pure.piOrderItemFromQuote(sourceItem).specification,'','empty text stays empty at conversion');
 for(const text of ['New order wording','']){const item=pure.mergeOrderItemWithQuoteSnapshot({specification:text},sourceItem,0);assert.equal(pure.buildSpec(item),text,'order edits have priority over source quote text');}
