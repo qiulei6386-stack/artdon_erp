@@ -33,7 +33,9 @@ $examplePhp = (string)file_get_contents($root . '/yifei_sync/config.example.php'
 
 yf_check(strpos($bom, "goModule('yifei_sync/index.php')") !== false && strpos($bom, '易飞数据') !== false, 'BOM 页有易飞数据入口');
 yf_check(strpos($bom, 'yifei_invmb_search') !== false && strpos($bom, 'applyYifeiMaterial') !== false && strpos($bom, '易飞镜像') !== false && strpos($bom, 'yifeiUnitCost') !== false && strpos($bom, 'cost_amount') !== false, 'BOM 物料名称联想与选料弹窗接入易飞镜像并对齐成本金额');
+yf_check(strpos($bom, 'yifei_bom_load') !== false && strpos($bom, 'loadYifeiBomReplace') !== false && strpos($bom, '从易飞带入BOM') !== false, 'BOM 编辑器接入易飞整单阶带入');
 yf_check(strpos($bomApi, "'yifei_invmb_search'=>'view_dashboard'") !== false && strpos($bomApi, 'yf_bom_picker_item') !== false, 'bom_api 提供 yifei_invmb_search');
+yf_check(strpos($bomApi, "'yifei_bom_load'=>'view_dashboard'") !== false && strpos($bomApi, 'yf_bom_load_children') !== false, 'bom_api 提供 yifei_bom_load');
 yf_check(strpos($portal, 'yifei_sync/index.php') !== false && strpos($portal, '易飞数据') !== false, '首页 BOM 旁有易飞数据入口');
 yf_check(strpos($page, 'yf_require_bom_user()') !== false && strpos($page, 'artdon_sso_core.php') === false, '查询页经易飞引导登录，不直接套用子目录相对跳转');
 yf_check(strpos($bootstrap, "artdon_sso_require_page('bom')") !== false, '登录后仍检查 BOM 查看权限');
@@ -263,6 +265,23 @@ $pickerMatOnly = yf_bom_picker_item(array(
 yf_check($pickerMatOnly['unit_material'] === 0.15 && $pickerMatOnly['cost_amount'] === 0.15 && !array_key_exists('unit_process', $pickerMatOnly), 'BOM 选料：仅材料 0.15 时成本金额=0.15且无加工列');
 $pickerHidden = yf_bom_picker_item(array('item_code' => 'X', 'item_name' => '隐', 'spec' => ''), false);
 yf_check(!array_key_exists('unit_material', $pickerHidden) && !array_key_exists('cost_amount', $pickerHidden), '无成本权限时不返回易飞金额字段');
+$bomLoadEmpty = yf_bom_load_children($sqlite, '', true);
+yf_check($bomLoadEmpty['ok'] === false && strpos((string)($bomLoadEmpty['error'] ?? ''), '主件') !== false, '空主件品号拒绝整单带入');
+$bomLoadMissing = yf_bom_load_children($sqlite, 'NO-SUCH-PARENT-999', true);
+yf_check($bomLoadMissing['ok'] === false, '不存在的主件拒绝整单带入');
+$bomLoadOk = yf_bom_load_children($sqlite, 'A1-1-01-0381', true);
+yf_check($bomLoadOk['ok'] === true && ($bomLoadOk['child_count'] ?? 0) === 5 && ($bomLoadOk['qty_basis'] ?? '') === 'effective_qty', '成品主件单阶带入 5 个子件');
+$compBaseQty = null;
+foreach ($bomLoadOk['items'] ?? array() as $blRow) {
+    if (($blRow['item_code'] ?? '') === 'COMP-BASE') {
+        $compBaseQty = $blRow['qty'] ?? null;
+        break;
+    }
+}
+yf_check($compBaseQty !== null && abs((float)$compBaseQty - 0.75) < 0.0001, '子件数量取有效用量 0.75（1/2×1.5）');
+$bomLoadNoCost = yf_bom_load_children($sqlite, 'A1-1-01-0381', false);
+$firstChild = $bomLoadNoCost['items'][0] ?? array();
+yf_check($bomLoadNoCost['ok'] === true && !array_key_exists('unit_material', $firstChild) && !array_key_exists('cost_amount', $firstChild), '整单带入无成本权限时不返回金额');
 yf_apply($sqlite, yf_normalize_payload(array(
     'type' => 'invmb',
     'batch_id' => 't-bom-pick-spec',

@@ -311,6 +311,9 @@ body{background:#f6f8fb}
 .mat-option-yifei{border-left:3px solid #0ea5e9}.mat-option-badge{display:inline-flex;border:1px solid #bae6fd;background:#f0f9ff;color:#0369a1;border-radius:999px;padding:1px 7px;font-size:10px;font-weight:900;margin-right:6px;vertical-align:middle}
 .mat-pick-row-yifei .mat-pick-thumb{background:#e0f2fe;color:#0369a1;border-color:#7dd3fc}
 .mat-pick-filters.yifei-mode .lib-only{display:none!important}
+.yifei-bom-bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px;margin:0 0 10px;padding:10px 12px;border:1px solid #bae6fd;background:#f0f9ff;border-radius:12px}
+.yifei-bom-label{font-size:12px;font-weight:900;color:#0369a1;white-space:nowrap}
+.yifei-bom-input{flex:1 1 220px;min-width:180px;max-width:360px;height:34px;border-radius:9px;border:1px solid #7dd3fc;padding:6px 10px;font-weight:800}
 .mat-pick-list{border:1px solid #e5e7eb;border-radius:14px;overflow:hidden;background:#fff}.mat-pick-row{display:grid;grid-template-columns:54px minmax(0,1fr) 130px 88px;gap:10px;align-items:center;padding:8px 10px;border-bottom:1px solid #edf2f7;cursor:pointer}.mat-pick-row:last-child{border-bottom:0}.mat-pick-row:hover{background:#eff6ff}.mat-pick-thumb{width:46px;height:46px;border-radius:10px;background:#f1f5f9;border:1px solid #dbe3ef;display:flex;align-items:center;justify-content:center;font-weight:1000;color:#64748b;overflow:hidden}.mat-pick-thumb img{width:100%;height:100%;object-fit:cover}.mat-pick-title{font-weight:1000;color:#0f172a;font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.mat-pick-sub{font-size:12px;color:#64748b;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.mat-pick-price{font-weight:1000;color:#b91c1c;text-align:right}.mat-pick-empty{padding:26px;text-align:center;color:#64748b;font-weight:900}.mat-pick-tag{display:inline-flex;border:1px solid #e2e8f0;background:#f8fafc;border-radius:999px;padding:2px 7px;margin-right:4px;font-size:11px;color:#475569;font-weight:900}
 @media(max-width:820px){.mat-pick-filters{grid-template-columns:1fr 1fr}.mat-pick-row{grid-template-columns:44px minmax(0,1fr);}.mat-pick-price,.mat-pick-row button{grid-column:2/3;text-align:left}.mat-pick-summary{margin-left:0;width:100%}}
 
@@ -601,6 +604,12 @@ body{background:#f6f8fb}
 </div>
 <div class="editor-more-panel" id="editorMorePanel">
   <div class="editor-more-fields"><label>利润率/加价率 % <input id="profitRate" type="number" step="0.1" oninput="touch();calc()" value="30"></label><label>报价模式 <select id="quoteMode" onchange="touch();calc()"><option value="markup">加价率</option><option value="margin">毛利率</option></select></label><label>汇率/备用 <input id="exchange" type="number" step="0.0001" oninput="touch()" value="1"></label><label class="editor-note-label">备注 <textarea id="note" class="note" oninput="touch()" placeholder="备注"></textarea></label></div>
+</div>
+<div class="yifei-bom-bar" id="yifeiBomBar">
+  <span class="yifei-bom-label">从易飞带入 BOM</span>
+  <input id="yfBomParentCode" class="yifei-bom-input" type="text" placeholder="易飞主件品号（单阶子件，覆盖当前物料行）" autocomplete="off" onkeydown="if(event.key==='Enter'){event.preventDefault();loadYifeiBomReplace()}">
+  <button type="button" class="ghost" id="yfBomLoadBtn" onclick="loadYifeiBomReplace()">从易飞带入BOM</button>
+  <span class="hint">只读镜像 yf_bommd；用量为有效用量（组成用量÷底数×(1+损耗率)）；不写共享物料库。</span>
 </div>
 <div class="actions editor-actions"><button id="bomAddRowBtn" onclick="addRow()">添加材料</button><button id="bomNamingCreateBtn" class="ghost" onclick="openNamingBomModal('create')">从命名型号新建</button><button id="bomNamingBindBtn" class="ghost" onclick="openNamingBomModal('bind')">绑定/更换型号</button><button id="bomSaveBtn" class="ok" onclick="saveCurrent()">保存 BOM</button><button id="bomSubmitBtn" class="ghost" onclick="submitBomReview()">转为预审</button><button id="bomWithdrawBtn" class="ghost" onclick="withdrawBomReview()" hidden>撤回审核</button><button id="bomApproveBtn" class="ok" onclick="approveBomProject()">终审/锁定快照</button><button id="bomRejectBtn" class="ghost" onclick="rejectBomProject()">退回草稿</button><button id="bomUnapproveBtn" class="ghost" onclick="unapproveBomProject()">退回预审</button><button id="bomSnapshotsBtn" class="ghost" onclick="openBomSnapshots()">快照</button><button class="ghost" onclick="duplicateProject()">复制当前</button><button class="table-tool-btn" type="button" onclick="openColumnPanel()">列</button><button class="table-tool-btn" type="button" onclick="resetBomColumnWidths()">重宽</button><button class="ghost" onclick="exportCurrentBomExcel()">导Excel</button><button id="bomImportBtn" class="ghost" onclick="openExcelImport('bom')">导入</button><button id="bomDeleteBtn" class="danger" onclick="deleteProject()">删除</button><span class="hint">预审可编辑并同步报价；终审锁定物料方案，修改需退回预审。</span></div>
 <div id="bomReviewBar" class="bom-review-bar"></div>
@@ -1185,7 +1194,8 @@ function updateBomWorkflowUI(){
   document.querySelectorAll('#editPage input:not([readonly]):not(#search):not(#modelSearch),#editPage select,#editPage textarea,#tbody button').forEach(el=>{el.disabled=locked});
   // Navigation is not a document edit. It stays available for locked review versions.
   ['search','modelSearch'].forEach(id=>set(id,true));
-  ['bomAddRowBtn','bomNamingCreateBtn','bomNamingBindBtn','bomSaveBtn','bomImportBtn','bomDeleteBtn'].forEach(id=>set(id,!!p&&hasPerm('edit')&&!locked));
+  ['bomAddRowBtn','bomNamingCreateBtn','bomNamingBindBtn','bomSaveBtn','bomImportBtn','bomDeleteBtn','yfBomLoadBtn'].forEach(id=>set(id,!!p&&hasPerm('edit')&&!locked));
+  const yfIn=$('yfBomParentCode');if(yfIn)yfIn.disabled=!p||!hasPerm('edit')||locked;
   set('topSaveCurrentBtn',!!p&&hasPerm('edit')&&!locked);
   set('bomSubmitBtn',ready&&hasPerm('edit')&&['draft','rejected'].includes(status));
   set('bomWithdrawBtn',ready&&hasPerm('edit')&&status==='pending'&&p.canWithdrawReview===true);
@@ -1900,27 +1910,70 @@ function showMaterialSuggest(input,rowIndex){
   };
   run().catch(()=>{if(document.activeElement===input&&seq===yifeiSuggestSeq){box.innerHTML='';box.style.display='none'}});
 }
-function applyYifeiMaterial(rowIndex,code,fromModal=false){
-  const it=yifeiPickCache[String(code||'').trim()];const p=getCurrent();if(!it||!p||!p.rows[rowIndex])return;
-  const oldPrice=Number(p.rows[rowIndex].price||0);
-  let newPrice=oldPrice, newProcess=Number(p.rows[rowIndex].process||0);
+function yifeiMaterialNote(it,fromBomLoad=false){
+  let note=`易飞镜像品号 ${it.item_code}`;
   if(currentCan.cost_view){
-    // 与详情「成本金额」一致：材料进单价，制费+加工(+特征)进加工费；无材料栏时整笔进单价。
-    if(it.unit_material!=null) newPrice=Number(it.unit_material);
-    else if(it.cost_amount!=null) newPrice=Number(it.cost_amount);
-    if(it.unit_process!=null) newProcess=Number(it.unit_process);
+    note+='；单价对齐易飞成本金额（材料 MB057；制费+加工+特征进加工费）';
+    if(fromBomLoad)note+='；用量为有效用量(组成用量/底数×(1+损耗率))';
+  }
+  return note;
+}
+function yifeiRowPrices(it,fallback={price:0,process:0}){
+  const oldPrice=Number(fallback.price||0);
+  let newPrice=oldPrice,newProcess=Number(fallback.process||0);
+  if(currentCan.cost_view){
+    if(it.unit_material!=null)newPrice=Number(it.unit_material);
+    else if(it.cost_amount!=null)newPrice=Number(it.cost_amount);
+    if(it.unit_process!=null)newProcess=Number(it.unit_process);
     else if(it.cost_amount!=null&&it.unit_material!=null){
       const rest=Number(it.cost_amount)-Number(it.unit_material);
       newProcess=rest>0?Math.round(rest*10000)/10000:0;
-    }else if(it.cost_amount!=null&&it.unit_material==null){
-      newProcess=0;
-    }
+    }else if(it.cost_amount!=null&&it.unit_material==null)newProcess=0;
   }
+  return {oldPrice,newPrice,newProcess};
+}
+function bomRowFromYifeiItem(it,qty,fromBomLoad=false,fallback={price:0,process:0}){
+  const q=Number(qty);const useQty=Number.isFinite(q)&&q>0?q:1;
+  const {newPrice,newProcess}=yifeiRowPrices(it,fallback);
+  const note=yifeiMaterialNote(it,fromBomLoad);
+  return {category:'',name:it.item_name||it.item_code||'',model:it.item_code||'',spec:it.spec||'',qty:useQty,process:newProcess,finish:'',finishCost:0,finish2:'',finishCost2:0,finishMode2:false,price:newPrice,priceStatus:'estimated',priceSource:'yifei_invmb',priceNote:note,materialId:'',materialBindingConfirmed:false,priceMode:'override'};
+}
+function applyYifeiMaterial(rowIndex,code,fromModal=false){
+  const it=yifeiPickCache[String(code||'').trim()];const p=getCurrent();if(!it||!p||!p.rows[rowIndex])return;
+  const {oldPrice,newPrice,newProcess}=yifeiRowPrices(it,p.rows[rowIndex]);
   const shown=yifeiUnitCost(it);
   if(fromModal&&oldPrice>0&&(shown!=null?shown:newPrice)>0){const np=shown!=null?shown:newPrice;const high=Math.max(oldPrice,np),low=Math.min(oldPrice,np);if(low>0&&high/low>=3){if(!confirm(`价格变化较大：原 ${money(oldPrice)}，新 ${money(np)}。确定带入易飞成本金额？`))return}}
-  const note=`易飞镜像品号 ${it.item_code}${currentCan.cost_view?'；单价对齐易飞成本金额（材料 MB057；制费+加工+特征进加工费）':''}`;
-  p.rows[rowIndex]={...p.rows[rowIndex],category:p.rows[rowIndex]?.category||'',name:it.item_name||it.item_code||'',model:it.item_code||'',spec:it.spec||'',price:newPrice,process:newProcess,materialId:'',materialBindingConfirmed:false,priceMode:'override',priceStatus:'estimated',priceSource:'yifei_invmb',priceNote:note};
+  const built=bomRowFromYifeiItem(it,p.rows[rowIndex].qty||1,false,p.rows[rowIndex]);
+  p.rows[rowIndex]={...p.rows[rowIndex],...built,price:newPrice,process:newProcess,category:p.rows[rowIndex]?.category||built.category};
   $('matSuggestFloat').style.display='none';if(fromModal)closeMaterialPicker();renderRows();calc();
+}
+let yifeiBomLoadBusy=false;
+async function loadYifeiBomReplace(){
+  if(yifeiBomLoadBusy)return;
+  if(bomWorkflowLocked())return alert('待审核请先撤回或驳回；已审核请先退审。');
+  const p=getCurrent();if(!p)return alert('请先打开一个 BOM');
+  const code=String($('yfBomParentCode')?.value||'').trim();
+  if(!code){alert('请输入易飞主件品号');return}
+  const existing=(p.rows||[]).length;
+  const warn=existing>0?`将清空当前 ${existing} 行物料，并从易飞主件「${code}」带入单阶子件替换。\n\n未保存前仍可刷新页面恢复。确定继续？`:`从易飞主件「${code}」带入单阶子件到当前 BOM？`;
+  if(!confirm(warn))return;
+  yifeiBomLoadBusy=true;const btn=$('yfBomLoadBtn');if(btn)btn.disabled=true;
+  setStatus('正在读取易飞 BOM…');
+  try{
+    const r=await api('yifei_bom_load',{parent_code:code});
+    if(!r.ok){alert(r.error||r.message||'易飞 BOM 带入失败');setStatus('易飞 BOM 带入失败：'+(r.error||r.message||''));return}
+    if(r.ready===false){alert(r.message||'易飞镜像尚未初始化');setStatus(r.message||'易飞镜像尚未初始化');return}
+    const items=r.items||[];
+    if(!items.length){alert(r.error||'该主件没有单阶子件，未修改当前物料表');setStatus('未带入：该主件没有子件');return}
+    items.forEach(cacheYifeiItem);
+    p.rows=items.map(it=>bomRowFromYifeiItem(it,it.qty,true));
+    renderRows();calc();touch();
+    const title=r.parent_name?`${r.parent_code} · ${r.parent_name}`:r.parent_code;
+    setStatus(`已从易飞带入 ${r.child_count||items.length} 行（主件 ${title}），记得保存。`);
+  }catch(e){
+    alert(e.message||'易飞 BOM 带入失败');
+    setStatus('易飞 BOM 带入失败：'+(e.message||''));
+  }finally{yifeiBomLoadBusy=false;updateBomWorkflowUI()}
 }
 document.addEventListener('click',e=>{if(!e.target.closest('.col-name')&&!e.target.closest('#matSuggestFloat')&&!e.target.closest('.mat-pick-btn'))$('matSuggestFloat').style.display='none'})
 function recentMaterialIds(){try{return JSON.parse(localStorage.getItem('bom_recent_material_ids_v75')||'[]').map(x=>String(x))}catch(e){return []}}

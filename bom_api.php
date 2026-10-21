@@ -19,7 +19,7 @@ $action = isset($_GET['action']) ? $_GET['action'] : (isset($_POST['action']) ? 
 // 第三阶段：BOM 细分权限。页面入口仍由统一登录控制，具体 API 再按功能拦截。
 $__bom_perm_map=array(
     'ping'=>null,'login'=>null,'logout'=>null,'me'=>null,
-    'auth_debug'=>'manage_users','bootstrap'=>'view_dashboard','dashboard_search'=>'view_dashboard','dashboard_images'=>'view_dashboard','project_detail'=>'view_dashboard','materials_list'=>'view_dashboard','yifei_invmb_search'=>'view_dashboard','naming_models'=>'view_library',
+    'auth_debug'=>'manage_users','bootstrap'=>'view_dashboard','dashboard_search'=>'view_dashboard','dashboard_images'=>'view_dashboard','project_detail'=>'view_dashboard','materials_list'=>'view_dashboard','yifei_invmb_search'=>'view_dashboard','yifei_bom_load'=>'view_dashboard','naming_models'=>'view_library',
     'create_from_naming'=>'edit_bom','bind_naming_to_project'=>'edit_bom','unbind_naming_from_project'=>'edit_bom','naming_sync_check'=>'view_dashboard','naming_sync_apply'=>'edit_bom',
     'list_users'=>'manage_users','save_user'=>'manage_users','disable_user'=>'manage_users',
     'save_project'=>'edit_bom','submit_review'=>'edit_bom','approve_project'=>'approve_bom','reject_project'=>'reject_bom','unapprove_project'=>'unapprove_bom','create_snapshot'=>'approve_bom','list_snapshots'=>'view_dashboard','get_snapshot'=>'view_dashboard','save_list'=>'edit_bom','delete_project'=>'delete_bom',
@@ -1559,7 +1559,7 @@ try{
     $pdo = pdo_safe();
     $GLOBALS['pdo_for_perm']=$pdo;
     // Dashboard enrichment is strictly read-only and must not run schema/backfill work.
-    if(!in_array($action,array('dashboard_search','dashboard_images','materials_list','material_image','material_where_used','price_history','yifei_invmb_search'),true)){
+    if(!in_array($action,array('dashboard_search','dashboard_images','materials_list','material_image','material_where_used','price_history','yifei_invmb_search','yifei_bom_load'),true)){
         ensure_bom_schema($pdo);
         ensure_bom_user_schema($pdo);
     }
@@ -1759,6 +1759,21 @@ try{
             $items[] = yf_bom_picker_item($row, $canCost);
         }
         json_out(array('ok'=>true,'ready'=>true,'q'=>$q,'items'=>$items,'can_cost'=>$canCost));
+    }
+
+    if($action === 'yifei_bom_load'){
+        bom_require_perm($user,'dashboard');
+        require_once __DIR__ . '/yifei_sync/lib.php';
+        $d = body_json();
+        try {
+            $parent = yf_text((string)($d['parent_code'] ?? $d['code'] ?? ''), 40, '主件品号', false);
+        } catch (InvalidArgumentException $e) {
+            json_out(array('ok'=>false,'error'=>$e->getMessage()));
+        }
+        $canCost = artdon_sso_can('bom','cost_view');
+        if(session_status()===PHP_SESSION_ACTIVE)session_write_close();
+        $ypdo = yf_pdo();
+        json_out(yf_bom_load_children($ypdo, $parent, $canCost));
     }
     if($action === 'material_image'){
         bom_require_perm($user,'dashboard');$d=body_json();

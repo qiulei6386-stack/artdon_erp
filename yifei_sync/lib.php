@@ -1465,3 +1465,80 @@ function yf_bom_picker_item(array $row, bool $canCost): array
     }
     return $out;
 }
+
+/**
+ * 把 yf_detail 子件行转成 yf_bom_picker_item 可接受的 invmb 形字段。
+ */
+function yf_bom_child_to_invmb_row(array $child): array
+{
+    return array(
+        'item_code' => (string)($child['component_code'] ?? ''),
+        'item_name' => (string)($child['item_name'] ?? ''),
+        'spec' => (string)($child['spec'] ?? ''),
+        'std_material' => $child['std_material'] ?? null,
+        'std_mfg' => $child['std_mfg'] ?? null,
+        'std_subcontract' => $child['std_subcontract'] ?? null,
+        'std_labor' => $child['std_labor'] ?? null,
+        'feature_rows' => is_array($child['feature_rows'] ?? null) ? $child['feature_rows'] : array(),
+    );
+}
+
+/**
+ * BOM 编辑器临时桥：读取主件单阶子件（yf_detail children），映射为可替换物料行的数组。
+ * 行数量 qty 使用有效用量 effective_qty（组成用量/底数×(1+损耗率)），与易飞查询页成本展开一致。
+ *
+ * @return array{ok:bool,error?:string,ready?:bool,message?:string,parent_code?:string,parent_name?:string,child_count?:int,items?:array,qty_basis?:string}
+ */
+function yf_bom_load_children(PDO $pdo, string $parentCode, bool $canCost): array
+{
+    $parentCode = trim($parentCode);
+    if ($parentCode === '') {
+        return array('ok' => false, 'error' => '请输入易飞主件品号');
+    }
+    if (!yf_tables_ready($pdo)) {
+        return array(
+            'ok' => true,
+            'ready' => false,
+            'items' => array(),
+            'message' => '易飞镜像表尚未初始化，请在服务器执行 php yifei_sync/migrate.php',
+        );
+    }
+    $detail = yf_detail($pdo, $parentCode);
+    if ($detail === null) {
+        return array('ok' => false, 'error' => '未找到该主件品号（易飞镜像）');
+    }
+    $children = $detail['children'] ?? array();
+    if (!is_array($children) || count($children) === 0) {
+        return array('ok' => false, 'error' => '该主件没有单阶 BOM 子件');
+    }
+    $items = array();
+    foreach ($children as $child) {
+        if (!is_array($child)) {
+            continue;
+        }
+        $picker = yf_bom_picker_item(yf_bom_child_to_invmb_row($child), $canCost);
+        $eq = (string)($child['effective_qty'] ?? '');
+        if ($eq === '') {
+            $eq = yf_effective_qty($child['qty'] ?? '0', $child['base_qty'] ?? null, $child['scrap_rate'] ?? null);
+        }
+        $picker['qty'] = (float)yf_decimal_in($eq, '有效用量');
+        $items[] = $picker;
+    }
+    if (!$items) {
+        return array('ok' => false, 'error' => '该主件没有单阶 BOM 子件');
+    }
+    $parentName = '';
+    if (is_array($detail['item'] ?? null)) {
+        $parentName = (string)($detail['item']['item_name'] ?? '');
+    }
+    return array(
+        'ok' => true,
+        'ready' => true,
+        'parent_code' => $parentCode,
+        'parent_name' => $parentName,
+        'child_count' => count($items),
+        'items' => $items,
+        'qty_basis' => 'effective_qty',
+        'can_cost' => $canCost,
+    );
+}
