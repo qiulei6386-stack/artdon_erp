@@ -1265,23 +1265,29 @@ function yf_search(PDO $pdo, string $q, int $limit = 50): array
     }
     $like = yf_like($q);
     $escape = yf_like_escape_sql($pdo);
-    $sql = 'SELECT u.item_code,
+    // 只读 yf_invmb：品号 MB001、品名 MB002、规格 MB003 均可模糊匹配；不依赖 BOM 主件/子件关系。
+    $sql = 'SELECT i.item_code,
             COALESCE(i.item_name, \'\') AS item_name,
             COALESCE(i.spec, \'\') AS spec,
             i.std_material, i.std_mfg, i.std_subcontract,
             i.synced_at AS item_synced_at,
             c.cost, c.period, c.doc_no, c.synced_at AS cost_synced_at
-        FROM (
-            SELECT item_code FROM yf_invmb WHERE item_code LIKE ?' . $escape . ' OR item_name LIKE ?' . $escape . '
-            UNION
-            SELECT item_code FROM yf_cstmb WHERE item_code LIKE ?' . $escape . '
-        ) u
-        LEFT JOIN yf_invmb i ON i.item_code = u.item_code
-        LEFT JOIN yf_cstmb c ON c.item_code = u.item_code
-        ORDER BY CASE WHEN u.item_code = ? THEN 0 ELSE 1 END, u.item_code
+        FROM yf_invmb i
+        LEFT JOIN yf_cstmb c ON c.item_code = i.item_code
+        WHERE i.item_code LIKE ?' . $escape . '
+            OR i.item_name LIKE ?' . $escape . '
+            OR i.spec LIKE ?' . $escape . '
+        ORDER BY CASE
+            WHEN i.item_code = ? THEN 0
+            WHEN i.item_name = ? THEN 1
+            WHEN i.item_code LIKE ?' . $escape . ' THEN 2
+            WHEN i.item_name LIKE ?' . $escape . ' THEN 3
+            WHEN i.spec LIKE ?' . $escape . ' THEN 4
+            ELSE 5
+        END, i.item_name, i.item_code
         LIMIT ' . $limit;
     $stmt = $pdo->prepare($sql);
-    $stmt->execute(array($like, $like, $like, $q));
+    $stmt->execute(array($like, $like, $like, $q, $q, $like, $like, $like));
     return yf_search_attach_features($pdo, array('ready' => true, 'rows' => $stmt->fetchAll()));
 }
 

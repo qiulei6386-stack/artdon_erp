@@ -235,6 +235,34 @@ $pickerDriver = yf_bom_picker_item(array(
 yf_check($pickerDriver['item_code'] === 'A5-2-06-0029' && $pickerDriver['unit_material'] === 74.0 && $pickerDriver['unit_process'] === 3.0, 'BOM 选料映射：材料单价与制费+加工');
 $pickerHidden = yf_bom_picker_item(array('item_code' => 'X', 'item_name' => '隐', 'spec' => ''), false);
 yf_check(!array_key_exists('unit_material', $pickerHidden), '无成本权限时不返回易飞金额字段');
+yf_apply($sqlite, yf_normalize_payload(array(
+    'type' => 'invmb',
+    'batch_id' => 't-bom-pick-spec',
+    'rows' => array(
+        array('item_code' => 'Z9-9-99-0001', 'item_name' => '型材毛坯', 'spec' => '前盖 砂白氧化'),
+        array('item_code' => 'Z9-9-99-0002', 'item_name' => '灯体', 'spec' => '6063-T5'),
+    ),
+)), '127.0.0.1');
+$searchQg = yf_search($sqlite, '前盖');
+$hitQg = false;
+foreach ($searchQg['rows'] as $sr) {
+    $blob = (string)($sr['item_name'] ?? '') . (string)($sr['spec'] ?? '');
+    if (strpos($blob, '前盖') !== false) {
+        $hitQg = true;
+        break;
+    }
+}
+yf_check($hitQg, 'yf_search 按规格可搜到子件类物料（前盖），不依赖 BOM 主件');
+$searchLt = yf_search($sqlite, '灯体');
+$hitLt = false;
+foreach ($searchLt['rows'] as $sr) {
+    $blob = (string)($sr['item_name'] ?? '') . (string)($sr['spec'] ?? '');
+    if (strpos($blob, '灯体') !== false) {
+        $hitLt = true;
+        break;
+    }
+}
+yf_check($hitLt, 'yf_search 按品名可搜到灯体类物料');
 $fgRows = yf_search($sqlite, 'A1-1-01-0381');
 $fgHtml = yf_render_page(array(
     'q' => 'A1-1-01-0381',
