@@ -19,6 +19,7 @@ function yf_check($ok, string $message): void
 
 $root = dirname(__DIR__);
 $bom = (string)file_get_contents($root . '/bom.php');
+$bomApi = (string)file_get_contents($root . '/bom_api.php');
 $portal = (string)file_get_contents($root . '/index.php');
 $agent = (string)file_get_contents($root . '/yifei_agent/sync.py');
 $agentReadme = (string)file_get_contents($root . '/yifei_agent/README.md');
@@ -31,6 +32,8 @@ $example = json_decode((string)file_get_contents($root . '/yifei_agent/config.ex
 $examplePhp = (string)file_get_contents($root . '/yifei_sync/config.example.php');
 
 yf_check(strpos($bom, "goModule('yifei_sync/index.php')") !== false && strpos($bom, '易飞数据') !== false, 'BOM 页有易飞数据入口');
+yf_check(strpos($bom, 'yifei_invmb_search') !== false && strpos($bom, 'applyYifeiMaterial') !== false && strpos($bom, '易飞镜像') !== false, 'BOM 物料名称联想与选料弹窗接入易飞镜像');
+yf_check(strpos($bomApi, "'yifei_invmb_search'=>'view_dashboard'") !== false && strpos($bomApi, 'yf_bom_picker_item') !== false, 'bom_api 提供 yifei_invmb_search');
 yf_check(strpos($portal, 'yifei_sync/index.php') !== false && strpos($portal, '易飞数据') !== false, '首页 BOM 旁有易飞数据入口');
 yf_check(strpos($page, 'yf_require_bom_user()') !== false && strpos($page, 'artdon_sso_core.php') === false, '查询页经易飞引导登录，不直接套用子目录相对跳转');
 yf_check(strpos($bootstrap, "artdon_sso_require_page('bom')") !== false, '登录后仍检查 BOM 查看权限');
@@ -220,6 +223,18 @@ $report = yf_std_total(array(
     'level_process' => '1',
 ));
 yf_check(yf_format_decimal($report['total']) === '171.9508' && yf_format_decimal($report['labor']) === '0.0992', '材料 153.8348 加制费加工等于报表成本金额，本阶不重复加');
+$pickerDriver = yf_bom_picker_item(array(
+    'item_code' => 'A5-2-06-0029',
+    'item_name' => '驱动',
+    'spec' => '黑色',
+    'std_material' => '74',
+    'std_mfg' => '2',
+    'std_subcontract' => '1',
+    'feature_rows' => array(),
+), true);
+yf_check($pickerDriver['item_code'] === 'A5-2-06-0029' && $pickerDriver['unit_material'] === 74.0 && $pickerDriver['unit_process'] === 3.0, 'BOM 选料映射：材料单价与制费+加工');
+$pickerHidden = yf_bom_picker_item(array('item_code' => 'X', 'item_name' => '隐', 'spec' => ''), false);
+yf_check(!array_key_exists('unit_material', $pickerHidden), '无成本权限时不返回易飞金额字段');
 $fgRows = yf_search($sqlite, 'A1-1-01-0381');
 $fgHtml = yf_render_page(array(
     'q' => 'A1-1-01-0381',

@@ -307,6 +307,10 @@ body{background:#f6f8fb}
 .mat-pick-head h3{margin:0;font-size:17px}.mat-pick-head p{margin:4px 0 0;color:#64748b;font-size:12px;line-height:1.45}.mat-pick-head .rowhint{font-weight:900;color:#1d4ed8}
 .mat-pick-body{padding:12px 14px;overflow:auto}.mat-pick-filters{display:grid;grid-template-columns:1.5fr .8fr .8fr .8fr .8fr auto;gap:8px;align-items:end;margin-bottom:10px}.mat-pick-filters label{display:grid;gap:4px;font-size:11px;color:#64748b;font-weight:900}.mat-pick-filters input,.mat-pick-filters select{height:34px;border-radius:9px;padding:6px 8px;min-width:0}
 .mat-pick-tools{display:flex;gap:7px;align-items:center;flex-wrap:wrap;margin:0 0 10px}.mat-pick-chip{height:27px;padding:0 9px!important;border-radius:999px!important;border:1px solid #dbe3ef!important;background:#fff!important;color:#334155!important;font-size:12px!important;font-weight:900!important}.mat-pick-chip.active{background:#2563eb!important;color:#fff!important;border-color:#2563eb!important}.mat-pick-summary{margin-left:auto;color:#64748b;font-size:12px;font-weight:800}
+.mat-pick-source{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:0 0 10px;padding-bottom:8px;border-bottom:1px dashed #e2e8f0}.mat-pick-source .hint{font-size:12px;color:#64748b;font-weight:800}
+.mat-option-yifei{border-left:3px solid #0ea5e9}.mat-option-badge{display:inline-flex;border:1px solid #bae6fd;background:#f0f9ff;color:#0369a1;border-radius:999px;padding:1px 7px;font-size:10px;font-weight:900;margin-right:6px;vertical-align:middle}
+.mat-pick-row-yifei .mat-pick-thumb{background:#e0f2fe;color:#0369a1;border-color:#7dd3fc}
+.mat-pick-filters.yifei-mode .lib-only{display:none!important}
 .mat-pick-list{border:1px solid #e5e7eb;border-radius:14px;overflow:hidden;background:#fff}.mat-pick-row{display:grid;grid-template-columns:54px minmax(0,1fr) 130px 88px;gap:10px;align-items:center;padding:8px 10px;border-bottom:1px solid #edf2f7;cursor:pointer}.mat-pick-row:last-child{border-bottom:0}.mat-pick-row:hover{background:#eff6ff}.mat-pick-thumb{width:46px;height:46px;border-radius:10px;background:#f1f5f9;border:1px solid #dbe3ef;display:flex;align-items:center;justify-content:center;font-weight:1000;color:#64748b;overflow:hidden}.mat-pick-thumb img{width:100%;height:100%;object-fit:cover}.mat-pick-title{font-weight:1000;color:#0f172a;font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.mat-pick-sub{font-size:12px;color:#64748b;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.mat-pick-price{font-weight:1000;color:#b91c1c;text-align:right}.mat-pick-empty{padding:26px;text-align:center;color:#64748b;font-weight:900}.mat-pick-tag{display:inline-flex;border:1px solid #e2e8f0;background:#f8fafc;border-radius:999px;padding:2px 7px;margin-right:4px;font-size:11px;color:#475569;font-weight:900}
 @media(max-width:820px){.mat-pick-filters{grid-template-columns:1fr 1fr}.mat-pick-row{grid-template-columns:44px minmax(0,1fr);}.mat-pick-price,.mat-pick-row button{grid-column:2/3;text-align:left}.mat-pick-summary{margin-left:0;width:100%}}
 
@@ -745,21 +749,26 @@ body{background:#f6f8fb}
   <div class="mat-pick-box">
     <div class="mat-pick-head">
       <div>
-        <h3>选择共享物料</h3>
-        <p>从共享物料库选择，自动带入名称、规格、单价。当前行：<span id="matPickRowHint" class="rowhint">-</span></p>
+        <h3>选择物料</h3>
+        <p>共享物料库或易飞镜像（品号/品名/规格）；也可在表格「物料名称」里直接输入品号联想。当前行：<span id="matPickRowHint" class="rowhint">-</span></p>
       </div>
       <button class="ghost" onclick="closeMaterialPicker()">关闭</button>
     </div>
     <div class="mat-pick-body">
-      <div class="mat-pick-filters">
-        <label>关键词<input id="mp_kw" placeholder="名称 / 型号 / 规格 / 品牌 / 供应商" oninput="renderMaterialPicker()"></label>
+      <div class="mat-pick-source">
+        <button type="button" class="mat-pick-chip active" id="mp_src_library" onclick="setMaterialPickerSource('library')">共享物料库</button>
+        <button type="button" class="mat-pick-chip" id="mp_src_yifei" onclick="setMaterialPickerSource('yifei')">易飞镜像</button>
+        <span class="hint" id="mp_source_hint">临时桥接：易飞只读 yf_invmb，不写入共享物料主数据。</span>
+      </div>
+      <div class="mat-pick-filters" id="mp_filters">
+        <label>关键词<input id="mp_kw" placeholder="名称 / 型号 / 规格 / 品牌 / 供应商" oninput="onMaterialPickerKeyword()"></label>
         <label>标准分类<select id="mp_group" onchange="renderMaterialPicker()"></select></label>
         <label>品牌<select id="mp_brand" onchange="renderMaterialPicker()"></select></label>
         <label>供应商<select id="mp_supplier" onchange="renderMaterialPicker()"></select></label>
         <label>排序<select id="mp_sort" onchange="renderMaterialPicker()"><option value="recent">最近/匹配优先</option><option value="priceAsc">单价低到高</option><option value="priceDesc">单价高到低</option><option value="nameAsc">名称 A-Z</option></select></label>
-        <button class="ok" onclick="renderMaterialPicker()">搜索</button>
+        <button class="ok" onclick="onMaterialPickerKeyword()">搜索</button>
       </div>
-      <div class="mat-pick-tools">
+      <div class="mat-pick-tools lib-only" id="mp_lib_tools">
         <button class="mat-pick-chip" id="mp_chip_all" onclick="setMaterialPickerQuick('all')">全部</button>
         <button class="mat-pick-chip" id="mp_chip_recent" onclick="setMaterialPickerQuick('recent')">最近</button>
         <button class="mat-pick-chip" id="mp_chip_same" onclick="setMaterialPickerQuick('same')">同类</button>
@@ -870,7 +879,7 @@ body{background:#f6f8fb}
 
 <script>
 const API='bom_api.php';
-let projects=[],materials=[],lists={categories:[],brands:[],suppliers:[],productTypes:[],namingProductTypes:[]},currentId=null,editingMaterialId=null,currentMaterialImage='',currentPage='dashboard',firstBoot=true,dashboardRange='month',dashboardView=['list','grid','grouped'].includes(localStorage.getItem('bom_dashboard_view_v80'))?localStorage.getItem('bom_dashboard_view_v80'):'grid',dashboardPage=1,dashboardPageSize=24,lastDashboardRows=[],currentUser=null,currentCan={},userRows=[],libraryView=localStorage.getItem('bom_library_view_v74')||'list',lastLibraryRows=[],materialPickRowIndex=-1,materialPickMode='same',materialFocusId=null,materialPageSize=Number(localStorage.getItem('bom_material_page_size_v763')||50),materialPage=Number(localStorage.getItem('bom_material_page_v763')||1),materialTotalPages=1,materialPendingPayload=null,materialPendingContinue=false,materialsLoaded=false,materialsLoading=null,projectDetailLoading={},bomSnapshots=[],bomSnapshotCurrent=null;
+let projects=[],materials=[],lists={categories:[],brands:[],suppliers:[],productTypes:[],namingProductTypes:[]},currentId=null,editingMaterialId=null,currentMaterialImage='',currentPage='dashboard',firstBoot=true,dashboardRange='month',dashboardView=['list','grid','grouped'].includes(localStorage.getItem('bom_dashboard_view_v80'))?localStorage.getItem('bom_dashboard_view_v80'):'grid',dashboardPage=1,dashboardPageSize=24,lastDashboardRows=[],currentUser=null,currentCan={},userRows=[],libraryView=localStorage.getItem('bom_library_view_v74')||'list',lastLibraryRows=[],materialPickRowIndex=-1,materialPickMode='same',materialPickSource='library',yifeiPickRows=[],yifeiPickLoading=false,yifeiPickError='',yifeiSuggestCache=new Map(),yifeiSuggestSeq=0,yifeiPickCache={},materialFocusId=null,materialPageSize=Number(localStorage.getItem('bom_material_page_size_v763')||50),materialPage=Number(localStorage.getItem('bom_material_page_v763')||1),materialTotalPages=1,materialPendingPayload=null,materialPendingContinue=false,materialsLoaded=false,materialsLoading=null,projectDetailLoading={},bomSnapshots=[],bomSnapshotCurrent=null;
 const BOM_PLACE_PAGE_KEY='bom_last_page_v762', BOM_PLACE_PROJECT_KEY='bom_last_project_v762';
 function bomValidPage(p){return ['dashboard','edit','library','materials','users'].includes(String(p||''))}
 function bomRememberPlace(){try{localStorage.setItem(BOM_PLACE_PAGE_KEY,bomValidPage(currentPage)?currentPage:'dashboard');if(currentId)localStorage.setItem(BOM_PLACE_PROJECT_KEY,currentId)}catch(e){}}
@@ -1445,7 +1454,7 @@ function renderRows(){
   $('tbody').innerHTML=(p.rows||[]).map((r,i)=>{
     const has2=!!r.finishMode2 || String(r.finish2||'').trim()!=='' || Number(r.finishCost2||0)>0;
     const finishTitle=has2 ? '当前：2次表面。点击切回1次' : '当前：1次表面。点击切到2次';
-    return `<tr class="${r.__plmMissing?'plm-missing':''}" data-material-id="${esc(r.materialId||'')}" data-price-source="${esc(r.priceSource||'')}" data-price-note="${esc(r.priceNote||'')}" draggable="true" data-row-index="${i}"><td class="col-no"><span class="drag-handle">☰</span> ${i+1}</td><td class="col-category"><textarea class="category cell-text" oninput="touch();autoGrow(this)">${esc(r.category)}</textarea></td><td class="col-name"><div class="name-pick-wrap"><textarea class="name cell-text" data-row-index="${i}" oninput="touch();autoGrow(this);showMaterialSuggest(this,${i})" onfocus="showMaterialSuggest(this,${i})" title="${r.__plmMissing?'共享物料库没有匹配到，请先新增或手动选择':''}">${esc(r.name)}</textarea><button type="button" class="mat-pick-btn" onclick="openMaterialPicker(${i})" title="选择共享物料">…</button></div></td><td class="col-spec"><textarea class="spec cell-text" oninput="touch();autoGrow(this)">${esc(r.spec)}</textarea></td><td class="col-qty"><input class="qty num" type="number" step="0.0001" value="${r.qty}" oninput="touch();calc()"></td><td class="col-process"><input class="process num" type="number" step="0.01" value="${r.process||0}" oninput="touch();calc()"></td><td class="col-finish"><div class="finish-cell ${has2?'finish-two':'finish-one'}"><div class="finish-stack"><div class="finish-row"><input class="finish" list="finishOptions" value="${esc(r.finish||'')}" oninput="touch();calc()" placeholder="面1"><input class="finishCost num" type="number" step="0.01" value="${money(r.finishCost||0)}" oninput="touch();calc()" placeholder="费"></div><div class="finish-row finish2-row"><input class="finish2" list="finishOptions" value="${esc(r.finish2||'')}" oninput="touch();calc()" placeholder="面2"><input class="finishCost2 num" type="number" step="0.01" value="${money(r.finishCost2||0)}" oninput="touch();calc()" placeholder="费"></div></div><button type="button" class="finish-toggle-btn ${has2?'has2':''}" onclick="toggleFinishMode(${i})" title="${esc(finishTitle)}">${has2?'2':'1'}</button></div></td><td class="price-cell col-price"><div class="price-status-wrap"><input class="price num price-input" type="number" step="0.0001" value="${r.price}" oninput="touch();calc()"><select class="priceStatus price-status" onchange="touch();calc()">${priceStatusOptions(r.priceStatus)}</select><select class="priceMode" onchange="touch();calc()" title="标准价待确认时沿用本行价格"><option value="library" ${r.priceMode!=="override"?"selected":""}>随物料标准价</option><option value="override" ${r.priceMode==="override"?"selected":""}>本BOM专用价</option></select></div></td><td class="num subtotal col-subtotal">${money(rowSub(r))}</td><td class="col-action"><div class="row-actions"><button class="row-act" onclick="insertRowAfter(${i})">＋</button><button class="row-act danger" onclick="removeRow(${i})">删</button></div></td></tr>`;
+    return `<tr class="${r.__plmMissing?'plm-missing':''}" data-material-id="${esc(r.materialId||'')}" data-price-source="${esc(r.priceSource||'')}" data-price-note="${esc(r.priceNote||'')}" draggable="true" data-row-index="${i}"><td class="col-no"><span class="drag-handle">☰</span> ${i+1}</td><td class="col-category"><textarea class="category cell-text" oninput="touch();autoGrow(this)">${esc(r.category)}</textarea></td><td class="col-name"><div class="name-pick-wrap"><textarea class="name cell-text" data-row-index="${i}" oninput="touch();autoGrow(this);showMaterialSuggest(this,${i})" onfocus="showMaterialSuggest(this,${i})" title="${r.__plmMissing?'共享物料库没有匹配到，请先新增或手动选择':''}">${esc(r.name)}</textarea><button type="button" class="mat-pick-btn" onclick="openMaterialPicker(${i})" title="选择物料（共享库 / 易飞）">…</button></div></td><td class="col-spec"><textarea class="spec cell-text" oninput="touch();autoGrow(this)">${esc(r.spec)}</textarea></td><td class="col-qty"><input class="qty num" type="number" step="0.0001" value="${r.qty}" oninput="touch();calc()"></td><td class="col-process"><input class="process num" type="number" step="0.01" value="${r.process||0}" oninput="touch();calc()"></td><td class="col-finish"><div class="finish-cell ${has2?'finish-two':'finish-one'}"><div class="finish-stack"><div class="finish-row"><input class="finish" list="finishOptions" value="${esc(r.finish||'')}" oninput="touch();calc()" placeholder="面1"><input class="finishCost num" type="number" step="0.01" value="${money(r.finishCost||0)}" oninput="touch();calc()" placeholder="费"></div><div class="finish-row finish2-row"><input class="finish2" list="finishOptions" value="${esc(r.finish2||'')}" oninput="touch();calc()" placeholder="面2"><input class="finishCost2 num" type="number" step="0.01" value="${money(r.finishCost2||0)}" oninput="touch();calc()" placeholder="费"></div></div><button type="button" class="finish-toggle-btn ${has2?'has2':''}" onclick="toggleFinishMode(${i})" title="${esc(finishTitle)}">${has2?'2':'1'}</button></div></td><td class="price-cell col-price"><div class="price-status-wrap"><input class="price num price-input" type="number" step="0.0001" value="${r.price}" oninput="touch();calc()"><select class="priceStatus price-status" onchange="touch();calc()">${priceStatusOptions(r.priceStatus)}</select><select class="priceMode" onchange="touch();calc()" title="标准价待确认时沿用本行价格"><option value="library" ${r.priceMode!=="override"?"selected":""}>随物料标准价</option><option value="override" ${r.priceMode==="override"?"selected":""}>本BOM专用价</option></select></div></td><td class="num subtotal col-subtotal">${money(rowSub(r))}</td><td class="col-action"><div class="row-actions"><button class="row-act" onclick="insertRowAfter(${i})">＋</button><button class="row-act danger" onclick="removeRow(${i})">删</button></div></td></tr>`;
   }).join('');
   initRowDrag();initResizableTable('bomTable','bom_col_widths_v65');applyBomColumnVisibility();updateBomStickyOffsets();autoGrowAll();updateBomWorkflowUI();setTimeout(scheduleBomTableLayout,80);setTimeout(scheduleBomTableLayout,260);
 }
@@ -1837,30 +1846,66 @@ function renderMaterials(){
 }
 function setMaterialPageSize(v){materialPageSize=Number(v||50);materialPage=1;renderMaterials();}
 function setMaterialPage(v){materialPage=Number(v||1);renderMaterials();}
+function yifeiDisplayTitle(it){const code=String(it.item_code||'').trim(),name=String(it.item_name||'').trim();if(code&&name)return `${code} · ${name}`;return code||name||'—'}
+function yifeiDisplaySub(it){const spec=String(it.spec||'').trim();return spec?`规格 ${spec}`:'无规格'}
+function yifeiPriceHint(it){if(!currentCan.cost_view)return '';const parts=[];if(it.unit_material!=null)parts.push('材料 '+money(it.unit_material));if(it.unit_process!=null)parts.push('制费+加工 '+money(it.unit_process));return parts.join(' ｜ ')}
+function cacheYifeiItem(it){const code=String(it?.item_code||'').trim();if(code)yifeiPickCache[code]=it;return code}
+async function fetchYifeiItems(q,limit=15){
+  const key=String(q||'').trim();if(!key)return [];
+  if(yifeiSuggestCache.has(key))return yifeiSuggestCache.get(key);
+  const r=await api('yifei_invmb_search',{q:key,limit});
+  if(!r.ok)throw new Error(r.error||r.message||'易飞搜索失败');
+  if(!r.ready)return [];
+  const items=r.items||[];yifeiSuggestCache.set(key,items);items.forEach(cacheYifeiItem);return items;
+}
+function renderMaterialSuggestHtml(rowIndex,libArr,yifeiItems){
+  const yf=(yifeiItems||[]).slice(0,12), lib=(libArr||[]).slice(0,20);
+  let html='';
+  if(yf.length){
+    html+=yf.map(it=>{const code=cacheYifeiItem(it);return `<div class="mat-option mat-option-yifei" onclick="applyYifeiMaterial(${rowIndex},'${esc(code)}')"><div><div class="mat-option-title"><span class="mat-option-badge">易飞</span>${esc(yifeiDisplayTitle(it))}</div><div class="mat-option-sub">${esc(yifeiDisplaySub(it))}${yifeiPriceHint(it)?' ｜ '+esc(yifeiPriceHint(it)):''}</div></div>${currentCan.cost_view&&it.unit_material!=null?`<div class="mat-option-price">${money(it.unit_material)}</div>`:''}</div>`}).join('');
+  }
+  if(lib.length){
+    html+=lib.map(m=>`<div class="mat-option" onclick="applyMaterial(${rowIndex},${m.id})"><div><div class="mat-option-title"><span class="mat-option-badge" style="border-color:#e2e8f0;background:#f8fafc;color:#475569">共享库</span>${esc(materialDisplayName(m))}</div><div class="mat-option-sub">${esc(m.category)} ｜ ${esc(materialDisplaySpec(m))} ｜ ${esc(m.supplier)}</div></div><div class="mat-option-price">${money(m.price)}</div></div>`).join('');
+  }
+  if(!html)html=`<div class="mat-option"><div class="mat-option-sub">未匹配到共享库或易飞镜像。可继续输入品号/品名，或点右侧「…」全库搜索。</div></div>`;
+  return html;
+}
 function showMaterialSuggest(input,rowIndex){
-  const kw=input.value.toLowerCase().trim();
+  const raw=input.value.trim(), kw=raw.toLowerCase();
   const box=$('matSuggestFloat');
   if(!box)return;
-  if(!kw){box.innerHTML='';box.style.display='none';return}
+  if(!raw){box.innerHTML='';box.style.display='none';return}
   const rect=input.getBoundingClientRect();
-  box.style.left=rect.left+'px';box.style.top=(rect.bottom+4)+'px';box.style.width=Math.max(rect.width,420)+'px';
-  if(!materialsLoaded){
-    box.innerHTML='<div class="mat-option"><div><div class="mat-option-title">正在读取共享物料库...</div><div class="mat-option-sub">首次使用物料联想时按需加载，不影响 BOM 首页打开速度。</div></div></div>';
-    box.style.display='block';
-    ensureMaterialsLoaded().then(()=>{if(document.activeElement!==input)return;if(materialsLoaded)showMaterialSuggest(input,rowIndex);else box.innerHTML=`<div class="mat-option">${esc(materialsError||'读取失败')}，请重新输入重试。</div>`;});
-    return;
-  }
-  const p=getCurrent();const row=p&&p.rows?p.rows[rowIndex]:null;const rowCat=row?row.category:'';
-  const nkw=normMaterialText(kw);
-  let arr=materials.filter(m=>materialMatchesCategory(m,rowCat)&&([m.category,m.brand,m.name,m.model,m.spec,m.supplier,m.keyword].join(' ').toLowerCase().includes(kw)||normMaterialText([m.category,m.brand,m.name,m.model,m.spec,m.supplier,m.keyword].join(' ')).includes(nkw))).slice(0,30);
-  if(!arr.length){
-    // V77.1：未找到物料时不再弹出遮挡下一行的提示框；需要全库选择时点右侧“…”打开物料选择器。
-    box.innerHTML='';
-    box.style.display='none';
-    return;
-  }
-  box.innerHTML=arr.map(m=>`<div class="mat-option" onclick="applyMaterial(${rowIndex},${m.id})"><div><div class="mat-option-title">${esc(materialDisplayName(m))}</div><div class="mat-option-sub">${esc(m.category)} ｜ ${esc(materialDisplaySpec(m))} ｜ ${esc(m.supplier)}</div></div><div class="mat-option-price">${money(m.price)}</div></div>`).join('');
+  box.style.left=rect.left+'px';box.style.top=(rect.bottom+4)+'px';box.style.width=Math.max(rect.width,460)+'px';
+  box.innerHTML='<div class="mat-option"><div class="mat-option-sub">正在搜索共享物料库与易飞镜像…</div></div>';
   box.style.display='block';
+  const seq=++yifeiSuggestSeq;
+  const run=async()=>{
+    if(!materialsLoaded)await ensureMaterialsLoaded();
+    if(document.activeElement!==input||seq!==yifeiSuggestSeq)return;
+    const p=getCurrent();const row=p&&p.rows?p.rows[rowIndex]:null;const rowCat=row?row.category:'';
+    const nkw=normMaterialText(kw);
+    let libArr=[];
+    if(materialsLoaded){
+      libArr=materials.filter(m=>materialMatchesCategory(m,rowCat)&&([m.category,m.brand,m.name,m.model,m.spec,m.supplier,m.keyword].join(' ').toLowerCase().includes(kw)||normMaterialText([m.category,m.brand,m.name,m.model,m.spec,m.supplier,m.keyword].join(' ')).includes(nkw)));
+    }
+    let yifeiItems=[];
+    try{yifeiItems=await fetchYifeiItems(raw,15)}catch(e){yifeiItems=[]}
+    if(document.activeElement!==input||seq!==yifeiSuggestSeq)return;
+    if(!libArr.length&&!yifeiItems.length){box.innerHTML='';box.style.display='none';return}
+    box.innerHTML=renderMaterialSuggestHtml(rowIndex,libArr,yifeiItems);
+    box.style.display='block';
+  };
+  run().catch(()=>{if(document.activeElement===input&&seq===yifeiSuggestSeq){box.innerHTML='';box.style.display='none'}});
+}
+function applyYifeiMaterial(rowIndex,code,fromModal=false){
+  const it=yifeiPickCache[String(code||'').trim()];const p=getCurrent();if(!it||!p||!p.rows[rowIndex])return;
+  const oldPrice=Number(p.rows[rowIndex].price||0), newPrice=currentCan.cost_view&&(it.unit_material!=null)?Number(it.unit_material):oldPrice;
+  const newProcess=currentCan.cost_view&&(it.unit_process!=null)?Number(it.unit_process):Number(p.rows[rowIndex].process||0);
+  if(fromModal&&oldPrice>0&&newPrice>0){const high=Math.max(oldPrice,newPrice),low=Math.min(oldPrice,newPrice);if(low>0&&high/low>=3){if(!confirm(`价格变化较大：原 ${money(oldPrice)}，新 ${money(newPrice)}。确定带入易飞材料单价？`))return}}
+  const note=`易飞镜像品号 ${it.item_code}${currentCan.cost_view?'；单价取单位标准材料(MB057)，加工费含制费+加工(MB059+MB060)':''}`;
+  p.rows[rowIndex]={...p.rows[rowIndex],category:p.rows[rowIndex]?.category||'',name:it.item_name||it.item_code||'',model:it.item_code||'',spec:it.spec||'',price:newPrice,process:newProcess,materialId:'',materialBindingConfirmed:false,priceMode:'override',priceStatus:'estimated',priceSource:'yifei_invmb',priceNote:note};
+  $('matSuggestFloat').style.display='none';if(fromModal)closeMaterialPicker();renderRows();calc();
 }
 document.addEventListener('click',e=>{if(!e.target.closest('.col-name')&&!e.target.closest('#matSuggestFloat')&&!e.target.closest('.mat-pick-btn'))$('matSuggestFloat').style.display='none'})
 function recentMaterialIds(){try{return JSON.parse(localStorage.getItem('bom_recent_material_ids_v75')||'[]').map(x=>String(x))}catch(e){return []}}
@@ -1893,24 +1938,57 @@ function fillMaterialPickerOptions(row){
   if([...gsel.options].some(o=>o.value===oldg))gsel.value=oldg; else gsel.value=inferGroupFromRow(row);
   if(brands.includes(oldb))bsel.value=oldb; if(sups.includes(olds))ssel.value=olds;
 }
+function setMaterialPickerSource(src){
+  materialPickSource=src==='yifei'?'yifei':'library';
+  $('mp_src_library')?.classList.toggle('active',materialPickSource==='library');
+  $('mp_src_yifei')?.classList.toggle('active',materialPickSource==='yifei');
+  $('mp_filters')?.classList.toggle('yifei-mode',materialPickSource==='yifei');
+  $('mp_lib_tools')?.classList.toggle('hide',materialPickSource==='yifei');
+  const kw=$('mp_kw');if(kw)kw.placeholder=materialPickSource==='yifei'?'品号 / 品名 / 规格（yf_invmb）':'名称 / 型号 / 规格 / 品牌 / 供应商';
+  renderMaterialPicker();
+}
+function onMaterialPickerKeyword(){if(materialPickSource==='yifei')return renderYifeiMaterialPicker();return renderMaterialPicker()}
 async function openMaterialPicker(rowIndex){
   collect(); materialPickRowIndex=rowIndex; materialPickMode='same';
   const p=getCurrent(), row=p&&p.rows?p.rows[rowIndex]:null; if(!p||!row)return;
   const mask=$('matPickMask'); if(!mask)return;
+  const guess=String(row.model||row.name||row.spec||'').trim();
+  materialPickSource=/^[A-Za-z0-9][A-Za-z0-9.\-_]{2,}$/.test(guess)&&!String(row.name||'').includes('/')?'yifei':'library';
   if($('matPickRowHint'))$('matPickRowHint').textContent=`第 ${rowIndex+1} 行｜${row.category||'未分类'}｜${row.name||'未命名'}`;
-  if($('mp_kw'))$('mp_kw').value=row.name||row.spec||'';
+  if($('mp_kw'))$('mp_kw').value=row.model||row.name||row.spec||'';
   mask.style.display='flex';
-  if(!materialsLoaded){
+  if(materialPickSource==='library'&&!materialsLoaded){
     if($('matPickList'))$('matPickList').innerHTML='<div class="mat-pick-empty">正在读取共享物料库...</div>';
     await ensureMaterialsLoaded();
   }
-  fillMaterialPickerOptions(row);
-  const g=inferGroupFromRow(row); if(g&&$('mp_group'))$('mp_group').value=g;
-  renderMaterialPicker(); setTimeout(()=>{$('mp_kw')&&$('mp_kw').focus()},50);
+  if(materialPickSource==='library'){
+    fillMaterialPickerOptions(row);
+    const g=inferGroupFromRow(row); if(g&&$('mp_group'))$('mp_group').value=g;
+  }
+  setMaterialPickerSource(materialPickSource);
+  setTimeout(()=>{$('mp_kw')&&$('mp_kw').focus()},50);
 }
 function closeMaterialPicker(){const m=$('matPickMask'); if(m)m.style.display='none'}
 function setMaterialPickerQuick(mode){materialPickMode=mode; if(mode==='all'&&$('mp_group'))$('mp_group').value=''; if(mode==='same'){const p=getCurrent(),row=p&&p.rows?p.rows[materialPickRowIndex]:null;const g=inferGroupFromRow(row);if(g&&$('mp_group'))$('mp_group').value=g} renderMaterialPicker()}
+async function renderYifeiMaterialPicker(){
+  const box=$('matPickList');if(!box)return;
+  const kw=($('mp_kw')?.value||'').trim();
+  if($('mp_summary'))$('mp_summary').textContent='易飞镜像';
+  if(!kw){box.innerHTML='<div class="mat-pick-empty">输入品号、品名或规格后搜索易飞镜像（yf_invmb）。</div>';return}
+  box.innerHTML='<div class="mat-pick-empty">正在搜索易飞镜像…</div>';
+  yifeiPickLoading=true;yifeiPickError='';
+  try{
+    yifeiPickRows=await fetchYifeiItems(kw,30);
+    if(!yifeiPickRows.length){box.innerHTML='<div class="mat-pick-empty">易飞镜像没有匹配结果。请换关键词，或切回共享物料库。</div>';return}
+    if($('mp_summary'))$('mp_summary').textContent=`易飞 ${yifeiPickRows.length} 条`;
+    box.innerHTML=yifeiPickRows.map(it=>{const code=cacheYifeiItem(it);const price=currentCan.cost_view&&it.unit_material!=null?money(it.unit_material):'—';return `<div class="mat-pick-row mat-pick-row-yifei" onclick="applyYifeiMaterial(${materialPickRowIndex},'${esc(code)}',true)"><div class="mat-pick-thumb">飞</div><div><div class="mat-pick-title">${esc(yifeiDisplayTitle(it))}</div><div class="mat-pick-sub">${esc(yifeiDisplaySub(it))}${yifeiPriceHint(it)?' ｜ '+esc(yifeiPriceHint(it)):''}</div></div><div class="mat-pick-price">${price}</div><button class="small ok" type="button">选</button></div>`}).join('');
+  }catch(e){
+    yifeiPickError=e.message||'搜索失败';
+    box.innerHTML=`<div class="mat-pick-empty">${esc(yifeiPickError)} <button onclick="renderYifeiMaterialPicker()">重试</button></div>`;
+  }finally{yifeiPickLoading=false}
+}
 function renderMaterialPicker(){
+  if(materialPickSource==='yifei'){renderYifeiMaterialPicker();return}
   const p=getCurrent(), row=p&&p.rows?p.rows[materialPickRowIndex]:null; const box=$('matPickList'); if(!box)return;
   if(!materialsLoaded){box.innerHTML=`<div class="mat-pick-empty">${esc(materialsError||'正在读取共享物料库...')} ${materialsError?'<button onclick="openMaterialPicker(materialPickRowIndex)">重试</button>':''}</div>`;return;}
   ['all','recent','same'].forEach(x=>{const el=$('mp_chip_'+x);if(el)el.classList.toggle('active',materialPickMode===x)});
