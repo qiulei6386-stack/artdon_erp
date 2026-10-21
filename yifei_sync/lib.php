@@ -1423,6 +1423,7 @@ function yf_bom_picker_item(array $row, bool $canCost): array
     if (!$canCost) {
         return $out;
     }
+    // 与详情页同一套：yf_std_total（材料+制费+加工，制费/加工为 0 时再加特征）。
     $features = is_array($row['feature_rows'] ?? null) ? $row['feature_rows'] : array();
     $item = array(
         'std_material' => $row['std_material'] ?? null,
@@ -1431,26 +1432,36 @@ function yf_bom_picker_item(array $row, bool $canCost): array
         'std_labor' => $row['std_labor'] ?? null,
     );
     $std = yf_std_total($item, $features);
+    $material = null;
     if ($item['std_material'] !== null && $item['std_material'] !== '') {
-        $out['unit_material'] = (float)yf_decimal_in((string)$item['std_material'], '单位标准材料');
-    }
-    $process = 0.0;
-    $hasProcess = false;
-    foreach (array('std_mfg' => '制费', 'std_subcontract' => '加工') as $key => $label) {
-        if ($item[$key] === null || $item[$key] === '') {
-            continue;
-        }
-        $part = (float)yf_decimal_in((string)$item[$key], $label);
-        if ($part > 0) {
-            $process += $part;
-            $hasProcess = true;
-        }
-    }
-    if ($hasProcess) {
-        $out['unit_process'] = round($process, 4);
+        $material = (float)yf_decimal_in((string)$item['std_material'], '单位标准材料');
+        $out['unit_material'] = $material;
     }
     if ($std['total'] !== null && $std['total'] !== '') {
-        $out['cost_amount'] = (float)$std['total'];
+        $costAmount = (float)$std['total'];
+        $out['cost_amount'] = $costAmount;
+        // 加工列 = 成本金额 - 材料，含制费/加工/已计入的特征，避免前端只写 MB057 丢特征。
+        $matPart = $material !== null ? $material : 0.0;
+        $process = round($costAmount - $matPart, 6);
+        if ($process > 0) {
+            $out['unit_process'] = round($process, 4);
+        }
+    } else {
+        $process = 0.0;
+        $hasProcess = false;
+        foreach (array('std_mfg' => '制费', 'std_subcontract' => '加工') as $key => $label) {
+            if ($item[$key] === null || $item[$key] === '') {
+                continue;
+            }
+            $part = (float)yf_decimal_in((string)$item[$key], $label);
+            if ($part > 0) {
+                $process += $part;
+                $hasProcess = true;
+            }
+        }
+        if ($hasProcess) {
+            $out['unit_process'] = round($process, 4);
+        }
     }
     return $out;
 }

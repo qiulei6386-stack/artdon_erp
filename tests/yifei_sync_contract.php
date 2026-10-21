@@ -32,7 +32,7 @@ $example = json_decode((string)file_get_contents($root . '/yifei_agent/config.ex
 $examplePhp = (string)file_get_contents($root . '/yifei_sync/config.example.php');
 
 yf_check(strpos($bom, "goModule('yifei_sync/index.php')") !== false && strpos($bom, '易飞数据') !== false, 'BOM 页有易飞数据入口');
-yf_check(strpos($bom, 'yifei_invmb_search') !== false && strpos($bom, 'applyYifeiMaterial') !== false && strpos($bom, '易飞镜像') !== false, 'BOM 物料名称联想与选料弹窗接入易飞镜像');
+yf_check(strpos($bom, 'yifei_invmb_search') !== false && strpos($bom, 'applyYifeiMaterial') !== false && strpos($bom, '易飞镜像') !== false && strpos($bom, 'yifeiUnitCost') !== false && strpos($bom, 'cost_amount') !== false, 'BOM 物料名称联想与选料弹窗接入易飞镜像并对齐成本金额');
 yf_check(strpos($bomApi, "'yifei_invmb_search'=>'view_dashboard'") !== false && strpos($bomApi, 'yf_bom_picker_item') !== false, 'bom_api 提供 yifei_invmb_search');
 yf_check(strpos($portal, 'yifei_sync/index.php') !== false && strpos($portal, '易飞数据') !== false, '首页 BOM 旁有易飞数据入口');
 yf_check(strpos($page, 'yf_require_bom_user()') !== false && strpos($page, 'artdon_sso_core.php') === false, '查询页经易飞引导登录，不直接套用子目录相对跳转');
@@ -232,9 +232,37 @@ $pickerDriver = yf_bom_picker_item(array(
     'std_subcontract' => '1',
     'feature_rows' => array(),
 ), true);
-yf_check($pickerDriver['item_code'] === 'A5-2-06-0029' && $pickerDriver['unit_material'] === 74.0 && $pickerDriver['unit_process'] === 3.0, 'BOM 选料映射：材料单价与制费+加工');
+yf_check($pickerDriver['item_code'] === 'A5-2-06-0029' && $pickerDriver['unit_material'] === 74.0 && $pickerDriver['unit_process'] === 3.0 && $pickerDriver['cost_amount'] === 77.0, 'BOM 选料映射：材料单价、制费+加工与成本金额');
+$pickerFeat = yf_bom_picker_item(array(
+    'item_code' => 'A4-2-03-0021',
+    'item_name' => '粗胚',
+    'spec' => '80*80',
+    'std_material' => '24.6',
+    'std_mfg' => '0',
+    'std_subcontract' => '0',
+    'feature_rows' => array(
+        array('feature_code' => 'UDF53', 'feature_name' => 'cnc', 'amount' => '30', 'sort_no' => 1),
+        array('feature_code' => 'UDF56', 'feature_name' => 'drill', 'amount' => '0.12', 'sort_no' => 2),
+    ),
+), true);
+yf_check(
+    $pickerFeat['unit_material'] === 24.6
+    && abs($pickerFeat['unit_process'] - 30.12) < 0.0001
+    && abs($pickerFeat['cost_amount'] - 54.72) < 0.0001,
+    'BOM 选料映射：成本金额含特征，加工列=成本金额-材料'
+);
+$pickerMatOnly = yf_bom_picker_item(array(
+    'item_code' => 'A6-5-04-0050',
+    'item_name' => '弹线',
+    'spec' => '304',
+    'std_material' => '0.15',
+    'std_mfg' => '0',
+    'std_subcontract' => '0',
+    'feature_rows' => array(),
+), true);
+yf_check($pickerMatOnly['unit_material'] === 0.15 && $pickerMatOnly['cost_amount'] === 0.15 && !array_key_exists('unit_process', $pickerMatOnly), 'BOM 选料：仅材料 0.15 时成本金额=0.15且无加工列');
 $pickerHidden = yf_bom_picker_item(array('item_code' => 'X', 'item_name' => '隐', 'spec' => ''), false);
-yf_check(!array_key_exists('unit_material', $pickerHidden), '无成本权限时不返回易飞金额字段');
+yf_check(!array_key_exists('unit_material', $pickerHidden) && !array_key_exists('cost_amount', $pickerHidden), '无成本权限时不返回易飞金额字段');
 yf_apply($sqlite, yf_normalize_payload(array(
     'type' => 'invmb',
     'batch_id' => 't-bom-pick-spec',

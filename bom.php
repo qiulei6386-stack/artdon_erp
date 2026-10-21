@@ -1848,21 +1848,23 @@ function setMaterialPageSize(v){materialPageSize=Number(v||50);materialPage=1;re
 function setMaterialPage(v){materialPage=Number(v||1);renderMaterials();}
 function yifeiDisplayTitle(it){const code=String(it.item_code||'').trim(),name=String(it.item_name||'').trim();if(code&&name)return `${code} · ${name}`;return code||name||'—'}
 function yifeiDisplaySub(it){const spec=String(it.spec||'').trim();return spec?`规格 ${spec}`:'无规格'}
-function yifeiPriceHint(it){if(!currentCan.cost_view)return '';const parts=[];if(it.unit_material!=null)parts.push('材料 '+money(it.unit_material));if(it.unit_process!=null)parts.push('制费+加工 '+money(it.unit_process));return parts.join(' ｜ ')}
+function yifeiUnitCost(it){if(!currentCan.cost_view)return null;if(it.cost_amount!=null)return Number(it.cost_amount);if(it.unit_material!=null)return Number(it.unit_material);return null}
+function yifeiPriceHint(it){if(!currentCan.cost_view)return '';const parts=[];const cost=yifeiUnitCost(it);if(cost!=null)parts.push('成本 '+money(cost));if(it.unit_material!=null&&(it.cost_amount==null||Number(it.unit_material)!==Number(it.cost_amount)))parts.push('材料 '+money(it.unit_material));if(it.unit_process!=null)parts.push('制费+加工 '+money(it.unit_process));return parts.join(' ｜ ')}
 function cacheYifeiItem(it){const code=String(it?.item_code||'').trim();if(code)yifeiPickCache[code]=it;return code}
 async function fetchYifeiItems(q,limit=15){
   const key=String(q||'').trim();if(!key)return [];
-  if(yifeiSuggestCache.has(key))return yifeiSuggestCache.get(key);
+  const hit=yifeiSuggestCache.get(key);
+  if(hit&&Array.isArray(hit.items)&&(Date.now()-Number(hit.t||0))<30000)return hit.items;
   const r=await api('yifei_invmb_search',{q:key,limit});
   if(!r.ok)throw new Error(r.error||r.message||'易飞搜索失败');
   if(!r.ready)return [];
-  const items=r.items||[];yifeiSuggestCache.set(key,items);items.forEach(cacheYifeiItem);return items;
+  const items=r.items||[];yifeiSuggestCache.set(key,{t:Date.now(),items});items.forEach(cacheYifeiItem);return items;
 }
 function renderMaterialSuggestHtml(rowIndex,libArr,yifeiItems){
   const yf=(yifeiItems||[]).slice(0,12), lib=(libArr||[]).slice(0,20);
   let html='';
   if(yf.length){
-    html+=yf.map(it=>{const code=cacheYifeiItem(it);return `<div class="mat-option mat-option-yifei" onclick="applyYifeiMaterial(${rowIndex},'${esc(code)}')"><div><div class="mat-option-title"><span class="mat-option-badge">易飞</span>${esc(yifeiDisplayTitle(it))}</div><div class="mat-option-sub">${esc(yifeiDisplaySub(it))}${yifeiPriceHint(it)?' ｜ '+esc(yifeiPriceHint(it)):''}</div></div>${currentCan.cost_view&&it.unit_material!=null?`<div class="mat-option-price">${money(it.unit_material)}</div>`:''}</div>`}).join('');
+    html+=yf.map(it=>{const code=cacheYifeiItem(it);return `<div class="mat-option mat-option-yifei" onclick="applyYifeiMaterial(${rowIndex},'${esc(code)}')"><div><div class="mat-option-title"><span class="mat-option-badge">易飞</span>${esc(yifeiDisplayTitle(it))}</div><div class="mat-option-sub">${esc(yifeiDisplaySub(it))}${yifeiPriceHint(it)?' ｜ '+esc(yifeiPriceHint(it)):''}</div></div>${(()=>{const c=yifeiUnitCost(it);return c!=null?'<div class="mat-option-price">'+money(c)+'</div>':''})()}</div>`}).join('');
   }
   if(lib.length){
     html+=lib.map(m=>`<div class="mat-option" onclick="applyMaterial(${rowIndex},${m.id})"><div><div class="mat-option-title"><span class="mat-option-badge" style="border-color:#e2e8f0;background:#f8fafc;color:#475569">共享库</span>${esc(materialDisplayName(m))}</div><div class="mat-option-sub">${esc(m.category)} ｜ ${esc(materialDisplaySpec(m))} ｜ ${esc(m.supplier)}</div></div><div class="mat-option-price">${money(m.price)}</div></div>`).join('');
@@ -1900,10 +1902,23 @@ function showMaterialSuggest(input,rowIndex){
 }
 function applyYifeiMaterial(rowIndex,code,fromModal=false){
   const it=yifeiPickCache[String(code||'').trim()];const p=getCurrent();if(!it||!p||!p.rows[rowIndex])return;
-  const oldPrice=Number(p.rows[rowIndex].price||0), newPrice=currentCan.cost_view&&(it.unit_material!=null)?Number(it.unit_material):oldPrice;
-  const newProcess=currentCan.cost_view&&(it.unit_process!=null)?Number(it.unit_process):Number(p.rows[rowIndex].process||0);
-  if(fromModal&&oldPrice>0&&newPrice>0){const high=Math.max(oldPrice,newPrice),low=Math.min(oldPrice,newPrice);if(low>0&&high/low>=3){if(!confirm(`价格变化较大：原 ${money(oldPrice)}，新 ${money(newPrice)}。确定带入易飞材料单价？`))return}}
-  const note=`易飞镜像品号 ${it.item_code}${currentCan.cost_view?'；单价取单位标准材料(MB057)，加工费含制费+加工(MB059+MB060)':''}`;
+  const oldPrice=Number(p.rows[rowIndex].price||0);
+  let newPrice=oldPrice, newProcess=Number(p.rows[rowIndex].process||0);
+  if(currentCan.cost_view){
+    // 与详情「成本金额」一致：材料进单价，制费+加工(+特征)进加工费；无材料栏时整笔进单价。
+    if(it.unit_material!=null) newPrice=Number(it.unit_material);
+    else if(it.cost_amount!=null) newPrice=Number(it.cost_amount);
+    if(it.unit_process!=null) newProcess=Number(it.unit_process);
+    else if(it.cost_amount!=null&&it.unit_material!=null){
+      const rest=Number(it.cost_amount)-Number(it.unit_material);
+      newProcess=rest>0?Math.round(rest*10000)/10000:0;
+    }else if(it.cost_amount!=null&&it.unit_material==null){
+      newProcess=0;
+    }
+  }
+  const shown=yifeiUnitCost(it);
+  if(fromModal&&oldPrice>0&&(shown!=null?shown:newPrice)>0){const np=shown!=null?shown:newPrice;const high=Math.max(oldPrice,np),low=Math.min(oldPrice,np);if(low>0&&high/low>=3){if(!confirm(`价格变化较大：原 ${money(oldPrice)}，新 ${money(np)}。确定带入易飞成本金额？`))return}}
+  const note=`易飞镜像品号 ${it.item_code}${currentCan.cost_view?'；单价对齐易飞成本金额（材料 MB057；制费+加工+特征进加工费）':''}`;
   p.rows[rowIndex]={...p.rows[rowIndex],category:p.rows[rowIndex]?.category||'',name:it.item_name||it.item_code||'',model:it.item_code||'',spec:it.spec||'',price:newPrice,process:newProcess,materialId:'',materialBindingConfirmed:false,priceMode:'override',priceStatus:'estimated',priceSource:'yifei_invmb',priceNote:note};
   $('matSuggestFloat').style.display='none';if(fromModal)closeMaterialPicker();renderRows();calc();
 }
@@ -1981,7 +1996,7 @@ async function renderYifeiMaterialPicker(){
     yifeiPickRows=await fetchYifeiItems(kw,30);
     if(!yifeiPickRows.length){box.innerHTML='<div class="mat-pick-empty">易飞镜像没有匹配结果。请换关键词，或切回共享物料库。</div>';return}
     if($('mp_summary'))$('mp_summary').textContent=`易飞 ${yifeiPickRows.length} 条`;
-    box.innerHTML=yifeiPickRows.map(it=>{const code=cacheYifeiItem(it);const price=currentCan.cost_view&&it.unit_material!=null?money(it.unit_material):'—';return `<div class="mat-pick-row mat-pick-row-yifei" onclick="applyYifeiMaterial(${materialPickRowIndex},'${esc(code)}',true)"><div class="mat-pick-thumb">飞</div><div><div class="mat-pick-title">${esc(yifeiDisplayTitle(it))}</div><div class="mat-pick-sub">${esc(yifeiDisplaySub(it))}${yifeiPriceHint(it)?' ｜ '+esc(yifeiPriceHint(it)):''}</div></div><div class="mat-pick-price">${price}</div><button class="small ok" type="button">选</button></div>`}).join('');
+    box.innerHTML=yifeiPickRows.map(it=>{const code=cacheYifeiItem(it);const price=(()=>{const c=yifeiUnitCost(it);return c!=null?money(c):'—'})();return `<div class="mat-pick-row mat-pick-row-yifei" onclick="applyYifeiMaterial(${materialPickRowIndex},'${esc(code)}',true)"><div class="mat-pick-thumb">飞</div><div><div class="mat-pick-title">${esc(yifeiDisplayTitle(it))}</div><div class="mat-pick-sub">${esc(yifeiDisplaySub(it))}${yifeiPriceHint(it)?' ｜ '+esc(yifeiPriceHint(it)):''}</div></div><div class="mat-pick-price">${price}</div><button class="small ok" type="button">选</button></div>`}).join('');
   }catch(e){
     yifeiPickError=e.message||'搜索失败';
     box.innerHTML=`<div class="mat-pick-empty">${esc(yifeiPickError)} <button onclick="renderYifeiMaterialPicker()">重试</button></div>`;
