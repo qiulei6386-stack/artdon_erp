@@ -8,6 +8,7 @@
 - 服务器部署情况：本环境未快进 `/www/wwwroot/Artdon/artdon_erp/`。合并 `main` 后按既有流程 GitHub Actions 快进；无新 DDL，仅需已有 `yf_*` 镜像表与同步数据。
 - Git 提交号及推送状态：见分支 `cursor/bom-yifei-material-picker-7cdf`。
 - 尚未完成：合并后工厂在 live `bom.php` 编辑 BOM：物料名称输入品号应出现「易飞」联想；「…」切「易飞镜像」搜索并保存一行；无成本权限账号应能选料但不带出金额。
+- 补充修复（同分支）：`yf_search` 非空关键词原先只匹配品号/品名且经 `yf_cstmb` UNION 偏成品号，未搜规格 MB003；改为直接 `yf_invmb` 品号/品名/规格三字段模糊匹配，与 BOM 主件无关。合同测试覆盖「前盖」「灯体」样例。
 
 ## 2026-10-21：小程序新增个人派工 1265 修复
 
