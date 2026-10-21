@@ -1,5 +1,14 @@
 # Artdon ERP 工作上下文
 
+## 2026-10-21：BOM 编辑器从易飞带入单阶 BOM（覆盖物料行）
+
+- 本次完成：`bom.php` 增加「从易飞带入 BOM」：输入易飞主件品号，确认后调用 `yifei_bom_load` 读取 `yf_detail` 单阶 `children`，清空并替换当前 BOM 物料表行；每行映射同 `yf_bom_picker_item`（品号/品名/规格/材料单价+制费+加工、`cost_amount` 逻辑）；`materialId` 留空。行数量取 `effective_qty`（组成用量÷底数×(1+损耗率)），与易飞查询页成本展开一致。空主件、无主件、无子件时 API 报错且前端不改动现有行。
+- 修改文件：`bom.php`、`bom_api.php`、`yifei_sync/lib.php`、`tests/yifei_sync_contract.php`、本文件。
+- 检查结果：`php -l` 通过相关 PHP；`php tests/yifei_sync_contract.php` 通过（含 A1-1-01-0381 五子件、COMP-BASE 有效用量 0.75、空/缺失主件、无成本权限、页面/API 接线）。云环境未登录 live `bom.php` 做点选验收。
+- 服务器部署情况：本环境未部署。合并 `main` 后由既有 GitHub Actions 快进；无新 DDL。
+- Git 提交号及推送状态：见分支 `cursor/yifei-bom-load-replace-ac85`。
+- 尚未完成：合并后工厂在 live `bom.php` 用例 `A1-1-01-0003` 等验证覆盖替换与保存；无成本账号应能带入行但不带出金额。
+
 ## 2026-10-21：BOM 物料名称接入易飞镜像选料（临时桥）
 
 - 本次完成：`bom.php` 物料名称输入联想与「…」选料弹窗增加易飞只读镜像 `yf_invmb` 搜索（品号/品名/规格模糊匹配，支持直接输入品号）；选中后带入品名、规格、品号（行内 `model`）、材料单价（MB057，需 `bom.cost_view`）、加工费列写入制费+加工（MB059+MB060）；不写共享物料主数据、`materialId` 留空。新增 `bom_api.php` 动作 `yifei_invmb_search` 与 `yifei_sync/lib.php` 映射函数 `yf_bom_picker_item`。
