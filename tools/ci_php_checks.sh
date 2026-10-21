@@ -92,6 +92,7 @@ contract_tests=(
   tests/crm_quote_followup_transaction_contract.php
   tests/dispatch_current_account_visibility_contract.php
   tests/dispatch_new_personal_order_isolated.php
+  tests/miniapp_dispatch_create_isolated.php
   tests/dispatch_due_change_policy_contract.php
   tests/dispatch_multi_table_alignment_contract.php
   tests/quote_manual_component_repair_contract.php

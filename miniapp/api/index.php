@@ -726,7 +726,7 @@ function mx_dispatch_create(array $in): array {
     $taskDate = trim((string)($in['task_date'] ?? ''));
     if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $taskDate)) $taskDate = date('Y-m-d');
     $status = ($isPersonal || $assignee === $uid) ? 'in_progress' : 'pending_accept';
-    $dispatchMode = $isPersonal ? 'personal' : 'single';
+    $dispatchMode = 'single'; // Task kind is stored separately in task_type.
 
     require_once __DIR__ . '/../../artdon_erp/dispatch_next_schema.php';
     if (function_exists('dispatch_next_init_schema')) dispatch_next_init_schema();
