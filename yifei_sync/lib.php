@@ -1399,3 +1399,52 @@ function yf_detail(PDO $pdo, string $code): ?array
         'std_total' => yf_std_total($itemRow, $itemFeatures),
     );
 }
+
+/**
+ * BOM 选料临时桥：把 yf_search 行映射为前端可带入 BOM 行的字段（只读镜像，不写主数据）。
+ */
+function yf_bom_picker_item(array $row, bool $canCost): array
+{
+    $code = trim((string)($row['item_code'] ?? ''));
+    $name = (string)($row['item_name'] ?? '');
+    $spec = (string)($row['spec'] ?? '');
+    $out = array(
+        'item_code' => $code,
+        'item_name' => $name,
+        'spec' => $spec,
+        'source' => 'yifei_invmb',
+    );
+    if (!$canCost) {
+        return $out;
+    }
+    $features = is_array($row['feature_rows'] ?? null) ? $row['feature_rows'] : array();
+    $item = array(
+        'std_material' => $row['std_material'] ?? null,
+        'std_mfg' => $row['std_mfg'] ?? null,
+        'std_subcontract' => $row['std_subcontract'] ?? null,
+        'std_labor' => $row['std_labor'] ?? null,
+    );
+    $std = yf_std_total($item, $features);
+    if ($item['std_material'] !== null && $item['std_material'] !== '') {
+        $out['unit_material'] = (float)yf_decimal_in((string)$item['std_material'], '单位标准材料');
+    }
+    $process = 0.0;
+    $hasProcess = false;
+    foreach (array('std_mfg' => '制费', 'std_subcontract' => '加工') as $key => $label) {
+        if ($item[$key] === null || $item[$key] === '') {
+            continue;
+        }
+        $part = (float)yf_decimal_in((string)$item[$key], $label);
+        if ($part > 0) {
+            $process += $part;
+            $hasProcess = true;
+        }
+    }
+    if ($hasProcess) {
+        $out['unit_process'] = round($process, 4);
+    }
+    if ($std['total'] !== null && $std['total'] !== '') {
+        $out['cost_amount'] = (float)$std['total'];
+    }
+    return $out;
+}

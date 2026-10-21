@@ -1,5 +1,14 @@
 # Artdon ERP 工作上下文
 
+## 2026-10-21：BOM 物料名称接入易飞镜像选料（临时桥）
+
+- 本次完成：`bom.php` 物料名称输入联想与「…」选料弹窗增加易飞只读镜像 `yf_invmb` 搜索（品号/品名/规格模糊匹配，支持直接输入品号）；选中后带入品名、规格、品号（行内 `model`）、材料单价（MB057，需 `bom.cost_view`）、加工费列写入制费+加工（MB059+MB060）；不写共享物料主数据、`materialId` 留空。新增 `bom_api.php` 动作 `yifei_invmb_search` 与 `yifei_sync/lib.php` 映射函数 `yf_bom_picker_item`。
+- 修改文件：`bom.php`、`bom_api.php`、`yifei_sync/lib.php`、`tests/yifei_sync_contract.php`、本文件。
+- 检查结果：`php -l` 通过相关 PHP；`php tests/yifei_sync_contract.php` 通过（含选料映射与页面/API 接线断言）。云环境未登录 live `bom.php` 做点选验收。
+- 服务器部署情况：本环境未快进 `/www/wwwroot/Artdon/artdon_erp/`。合并 `main` 后按既有流程 GitHub Actions 快进；无新 DDL，仅需已有 `yf_*` 镜像表与同步数据。
+- Git 提交号及推送状态：见分支 `cursor/bom-yifei-material-picker-7cdf`。
+- 尚未完成：合并后工厂在 live `bom.php` 编辑 BOM：物料名称输入品号应出现「易飞」联想；「…」切「易飞镜像」搜索并保存一行；无成本权限账号应能选料但不带出金额。
+
 ## 2026-10-21：小程序新增个人派工 1265 修复
 
 - 本次完成：确认 `task_type` 与 `dispatch_mode` 是两个不同字段；单条个人派工应使用 `task_type=personal`、`dispatch_mode=single`。小程序创建接口原来将 `personal` 写入仅接受 `single/multi/plan/recurring` 的派工方式 ENUM，触发 1265。仅更正该映射，不改表、不调整标题/项目长度、不改变本人归属、状态、通知、日志或权限。
