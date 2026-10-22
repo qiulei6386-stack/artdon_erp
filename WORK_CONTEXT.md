@@ -1,5 +1,14 @@
 # Artdon ERP 工作上下文
 
+## 2026-10-22：易飞镜像新加坡 Feed API（芯片/驱动/电源）
+
+- 本次完成：新增只读 `GET yifei_sync/feed.php`，供新加坡店（IP `43.160.202.212`）用 `X-Feed-Token` 分页拉取 `yf_invmb` 中芯片（`A5-1-%`）、驱动（`A5-2-%`）、电源（品名含「电源」且排除电线/线材/电缆/电源线）。独立密钥文件 `/www/server/artdon_secrets/yifei_feed.php`（示例 `feed_secret.example.php`），不复用 ingest 的 `yifei_sync.php` / `X-Yifei-Token`。`feed_brand.php` 统一品牌词典；`category` 冲突时 chip > driver > power。`api.php` 未改。
+- 修改文件：`yifei_sync/feed.php`、`feed_lib.php`、`feed_brand.php`、`feed_secret.example.php`、`README.md`、`tests/yifei_sync_contract.php`、`.gitignore`、本文件。
+- 检查结果：`php -l` 通过新增 PHP；`php tests/yifei_sync_contract.php` 通过（含 Feed 品类/品牌/鉴权/SQLite 样例及既有 ingest 契约）。本机 `php -S` curl：错误 token 401、非白名单 IP 403、正确 token 200 JSON。
+- 服务器部署情况：本环境未部署 `/www/wwwroot/Artdon/artdon_erp/`。合并 `main` 后由既有 GitHub Actions 快进；运维须在服务器创建 `yifei_feed.php` 并写入真实 token（代码库不包含）。
+- Git 提交号及推送状态：见分支 `cursor/yifei-sg-feed-api-7169`。
+- 尚未完成：合并后在新加坡服务器用真实密钥 curl happy path；广州 Nginx 需保证 `X-Real-IP` 或 `X-Forwarded-For` 能反映新加坡出口 IP。
+
 ## 2026-10-21：BOM 编辑器从易飞带入单阶 BOM（覆盖物料行）
 
 - 本次完成：`bom.php` 增加「从易飞带入 BOM」：输入易飞主件品号，确认后调用 `yifei_bom_load` 读取 `yf_detail` 单阶 `children`，清空并替换当前 BOM 物料表行；每行映射同 `yf_bom_picker_item`（品号/品名/规格/材料单价+制费+加工、`cost_amount` 逻辑）；`materialId` 留空。行数量取 `effective_qty`（组成用量÷底数×(1+损耗率)），与易飞查询页成本展开一致。空主件、无主件、无子件时 API 报错且前端不改动现有行。

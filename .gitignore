@@ -51,6 +51,7 @@ centers/config.php
 
 # 易飞只读同步：密钥与本机代理配置不入库
 yifei_sync/config.local.php
+yifei_sync/feed.config.local.php
 yifei_agent/config.json
 yifei_agent/state/
 yifei_agent/logs/

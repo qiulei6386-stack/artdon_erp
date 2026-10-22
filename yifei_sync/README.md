@@ -4,6 +4,7 @@
 
 查询页：`yifei_sync/index.php`。未登录时跳到站点根目录的 `login.php`（例如 `/artdon_erp/login.php`），并带上原来的查询页地址；不会跳到 `yifei_sync/login.php`。  
 接收接口：`POST yifei_sync/api.php`  
+新加坡只读 Feed：`GET yifei_sync/feed.php`（见下文「新加坡 Feed」）  
 建表：`php yifei_sync/migrate.php`
 
 ## 合并之后再在服务器做（本 PR 不部署）
@@ -29,7 +30,85 @@ return array(
 5. 同一把密钥只放在易飞那台 Windows 机器的 `yifei_agent/config.json`。接口地址示例：`https://novlight.com/yifei_sync/api.php`。
 6. 用有 `bom.view` 的账号打开 BOM 页的「易飞数据」，或首页「研发 / 成本 / 生产」里的「易飞数据」。能看成本的人还需要 `bom.cost_view`，和现有 BOM 成本权限一致。没有这个权限时，账上成本、标准成本和材料合计都不输出。
 
-## 接口
+## 新加坡 Feed（芯片 / 驱动 / 电源）
+
+广州镜像只读 JSON 列表，供新加坡店后台拉取 `yf_invmb` 中的芯片、驱动与电源物料。**与 ingest 接口独立**：不用 `X-Yifei-Token`，也不读 `yifei_sync.php`。
+
+部署时在服务器创建（勿提交 Git）：
+
+`/www/server/artdon_secrets/yifei_feed.php`
+
+结构见仓库内 `yifei_sync/feed_secret.example.php`。也可用环境变量 `YIFEI_FEED_TOKEN`。本机联调可用 `yifei_sync/feed.config.local.php`。
+
+### 鉴权
+
+| 项 | 要求 |
+| --- | --- |
+| 方法 | `GET` only |
+| 请求头 | `X-Feed-Token: <token>` |
+| 来源 IP | 必须为 `43.160.202.212`（新加坡）。联调可设 `YIFEI_FEED_ALLOWED_IPS` 覆盖 |
+| 客户端 IP 判定顺序 | `HTTP_CF_CONNECTING_IP` → `HTTP_X_REAL_IP`（Nginx `real_ip`）→ `HTTP_X_FORWARDED_FOR` 第一个地址 → `REMOTE_ADDR` |
+
+失败时返回 JSON：`401` 密钥错误，`403` IP 未授权；不返回业务数据。
+
+### 数据范围
+
+| category | 规则 |
+| --- | --- |
+| `chip` | `item_code` LIKE `A5-1-%` |
+| `driver` | `item_code` LIKE `A5-2-%` |
+| `power` | `item_name` 含「电源」，且**不**含线材词：电线、线材、电缆、电源线 |
+
+一行同时命中多条时，输出字段 `category` 的优先级：**chip > driver > power**（先看品号前缀）。
+
+`brand` 由品名/规格词典解析（见 `yifei_sync/feed_brand.php`）；英文规范名优先，科谷/欧切斯/南电/智观等仅中文别名则返回中文；未识别为 `null`。
+
+### 查询参数
+
+`category`（chip|driver|power）、`brand`（与 `brand` 字段精确匹配）、`q`（品号/品名/规格模糊）、`since`（`synced_at >=`）、`page`（默认 1）、`per_page`（默认 50，最大 200）。
+
+### 响应示例
+
+```json
+{
+  "ok": true,
+  "data": [
+    {
+      "item_code": "A5-1-01-0001",
+      "item_name": "示例芯片",
+      "spec": "10W",
+      "std_material": "1.500000",
+      "latest_purchase": null,
+      "synced_at": "2026-10-20 12:00:00",
+      "category": "chip",
+      "brand": "Bridgelux"
+    }
+  ],
+  "meta": { "page": 1, "per_page": 50, "total": 1 }
+}
+```
+
+### curl 测试计划
+
+```bash
+# 错误密钥 → 401
+curl -sS -o /dev/null -w '%{http_code}\n' \
+  'https://novlight.com/artdon_erp/yifei_sync/feed.php' \
+  -H 'X-Feed-Token: wrong'
+
+# 错误 IP（非新加坡服务器上执行）→ 403
+curl -sS -o /dev/null -w '%{http_code}\n' \
+  'https://novlight.com/artdon_erp/yifei_sync/feed.php' \
+  -H 'X-Feed-Token: <运维写入的密钥>'
+
+# 新加坡服务器上 happy path
+curl -sS 'https://novlight.com/artdon_erp/yifei_sync/feed.php?category=chip&per_page=10' \
+  -H 'X-Feed-Token: <运维写入的密钥>'
+```
+
+未配置 Feed 密钥时返回 `503 TOKEN_NOT_CONFIGURED`。不设置宽松 CORS；建议新加坡后端服务器到服务器调用。
+
+## 接口（ingest）
 
 请求头：`X-Yifei-Token`（也接受 `Authorization: Bearer`）和 `Content-Type: application/json`。
 
