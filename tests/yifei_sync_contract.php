@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once dirname(__DIR__) . '/yifei_sync/lib.php';
+require_once dirname(__DIR__) . '/yifei_sync/feed_lib.php';
 require_once dirname(__DIR__) . '/yifei_sync/page.php';
 
 $fail = 0;
@@ -484,6 +485,56 @@ if ($python !== '') {
 } else {
     yf_check(false, '找不到 python3');
 }
+
+$feedReadme = (string)file_get_contents($root . '/yifei_sync/README.md');
+$feedPhp = (string)file_get_contents($root . '/yifei_sync/feed.php');
+$apiPhp = (string)file_get_contents($root . '/yifei_sync/api.php');
+yf_check(strpos($feedReadme, 'feed.php') !== false && strpos($feedReadme, 'yifei_feed.php') !== false && strpos($feedReadme, 'X-Feed-Token') !== false, 'README 含 Feed 地址、密钥路径与请求头');
+yf_check(strpos($feedPhp, 'X-Feed-Token') === false && strpos($feedPhp, 'yf_feed_authorize') !== false, 'feed.php 使用 Feed 专用鉴权');
+yf_check(strpos($apiPhp, 'yf_feed') === false && strpos($apiPhp, 'feed.php') === false, 'ingest api.php 未接入 Feed');
+yf_check(yf_feed_parse_brand('普瑞 COB 10W', '') === 'Bridgelux', '品牌：普瑞 → Bridgelux');
+yf_check(yf_feed_parse_brand('明纬 LRS-50', '') === 'MEAN WELL', '品牌：明纬 → MEAN WELL');
+yf_check(yf_feed_parse_brand('科谷电源', '') === '科谷', '品牌：仅中文别名返回中文');
+yf_check(yf_feed_resolve_category('A5-1-01-0001', '开关电源') === 'chip', '品类：A5-1 前缀优先于电源品名');
+yf_check(yf_feed_resolve_category('P-99', '12V 开关电源') === 'power', '品类：非 A5 前缀且品名含电源');
+yf_check(yf_feed_resolve_category('P-99', '电源线 1.5米') === null, '品类：电源线排除');
+$feedDb = new PDO('sqlite::memory:');
+yf_install($feedDb);
+$feedDb->exec("INSERT INTO yf_invmb (item_code, item_name, spec, std_material, latest_purchase, synced_at, batch_id) VALUES
+ ('A5-1-01-CHIP', '普瑞芯片', '10W', 1.5, NULL, '2026-10-20 10:00:00', 'f1'),
+ ('A5-2-06-DRV', '莱福德驱动', '30W', 2, 1.9, '2026-10-21 11:00:00', 'f1'),
+ ('Z-PWR-01', '12V 开关电源', '60W', 8, NULL, '2026-10-19 09:00:00', 'f1')");
+$feedAll = yf_feed_query($feedDb, array('page' => 1, 'per_page' => 50));
+yf_check(count($feedAll['data']) === 3 && $feedAll['meta']['total'] === 3, 'Feed 列表返回三类物料');
+$feedChip = yf_feed_query($feedDb, array('category' => 'chip'));
+yf_check(count($feedChip['data']) === 1 && $feedChip['data'][0]['brand'] === 'Bridgelux', 'Feed category=chip 与 brand 字段');
+$feedSince = yf_feed_query($feedDb, array('since' => '2026-10-20 00:00:00'));
+yf_check($feedSince['meta']['total'] === 2, 'Feed since 过滤 synced_at');
+putenv('YIFEI_FEED_TOKEN=contract-feed-token-value');
+putenv('YIFEI_FEED_ALLOWED_IPS=127.0.0.1');
+$feedSrv = array('REMOTE_ADDR' => '127.0.0.1', 'HTTP_X_FEED_TOKEN' => 'contract-feed-token-value');
+$feedOk = true;
+try {
+    yf_feed_authorize($feedSrv);
+} catch (RuntimeException $e) {
+    $feedOk = false;
+}
+yf_check($feedOk, 'Feed 正确 IP 与密钥通过');
+$feedIpDenied = false;
+try {
+    yf_feed_authorize(array('REMOTE_ADDR' => '8.8.8.8', 'HTTP_X_FEED_TOKEN' => 'contract-feed-token-value'));
+} catch (RuntimeException $e) {
+    $feedIpDenied = $e->getMessage() === 'FORBIDDEN_IP';
+}
+yf_check($feedIpDenied, 'Feed 错误 IP 被拒绝');
+$feedTokDenied = false;
+try {
+    yf_feed_authorize(array('REMOTE_ADDR' => '127.0.0.1', 'HTTP_X_FEED_TOKEN' => 'wrong-feed-token'));
+} catch (RuntimeException $e) {
+    $feedTokDenied = $e->getMessage() === 'UNAUTHORIZED';
+}
+yf_check($feedTokDenied, 'Feed 错误密钥被拒绝');
+yf_check(yf_feed_client_ip(array('HTTP_X_REAL_IP' => '43.160.202.212', 'REMOTE_ADDR' => '10.0.0.1')) === '43.160.202.212', 'Feed IP 优先 HTTP_X_REAL_IP');
 
 yf_login_redirect_smoke($root);
 yf_mysql_smoke($root);
