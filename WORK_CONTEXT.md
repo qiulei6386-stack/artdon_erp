@@ -1,5 +1,14 @@
 # Artdon ERP 工作上下文
 
+## 2026-10-23：拜访详情沟通内容回退（生产热修复入库）
+
+- 本次完成：将生产已修版本同步入仓。`crm_visit_miniapp_meta_public` 在 `communication_content` 与 `meta.notes` 为空时依次回退调用方 `notes`、`planned_note`（旧「文字记录」）；`crm_visit_miniapp_meta_save` 在保存时同步 `notes` 与 `communication_content`，避免只写一侧导致详情空白。`miniapp/api/index.php` 的 `mx_visit_extra` 仅在 `meta.notes` 非空时覆盖 `planned_note`；照片 `photo_category` 白名单增加 `communication` / `progress` / `background_check`，并从 `file_role` 推导分类。
+- 修改文件：`includes/crm_visit_miniapp.php`、`miniapp/api/index.php`、`tests/miniapp_card_followup_contract.php`、本文件。
+- 检查结果：`php -l` 通过上述 PHP；`php tests/miniapp_card_followup_contract.php` 通过（含空 meta → planned_note / 行内 notes 回退）。云环境无 MySQL，未做 live 写库 E2E。
+- 服务器部署情况：本环境未部署。合并 `main` 后由既有 GitHub Actions 快进；生产已先行热修，合并后需核对三方与生产一致。
+- Git 提交号及推送状态：见分支 `cursor/visit-comm-notes-hotfix-af92`。
+- 尚未完成：合并后在体验版打开曾有「沟通内容空白」的拜访单确认展示；若生产与 Git 仍有差异需再对齐一次提交号。
+
 ## 2026-10-23：小程序名片 / 跟进 API 与前端字段对齐
 
 - 本次完成：扩展 `miniapp/api` 与 CRM 拜访/客户模块，字段名与 yada-crm-miniprogram 体验版一致：`card_side` / `ocr` 名片上传；`business_card_back_token` 随 `customer_create` / `contact_save`；拜访类型 `video_meeting`、`daily_followup`；`visit_save` 使用 `participants_text`、`participant_count`、`background_check_notes`、`progress_update`（跟进与平时跟进必填）；附件 `photo_category` = `communication` / `progress` / `background_check`。新增 `includes/crm_visit_miniapp.php`、`miniapp/migrate.php` 补列、契约测试与 `docs/miniapp-api-card-followup.md`；网页 CRM 列表补充新拜访类型标签。

@@ -136,6 +136,18 @@ function crm_visit_miniapp_meta_save(int $visitId, array $input): void
     $notes = array_key_exists('notes', $input)
         ? trim((string)$input['notes'])
         : (array_key_exists('planned_note', $input) ? trim((string)$input['planned_note']) : (string)($existing['notes'] ?? ''));
+    // 文字记录 / 沟通内容同一正文：两端字段互相同步，避免只写一侧导致详情空白
+    if ($communication === '' && $notes !== '') {
+        $communication = $notes;
+    }
+    if ($notes === '' && $communication !== '') {
+        $notes = $communication;
+    }
+    if (array_key_exists('notes', $input) || array_key_exists('planned_note', $input)) {
+        $communication = $notes;
+    } elseif (array_key_exists('communication_content', $input) || array_key_exists('text_record', $input)) {
+        $notes = $communication;
+    }
     $start = null;
     $end = null;
     if (function_exists('mx_time_in')) {
@@ -158,10 +170,21 @@ function crm_visit_miniapp_meta_save(int $visitId, array $input): void
 /** @return array<string,mixed> */
 function crm_visit_miniapp_meta_public(array $meta, array $visitRow = []): array
 {
+    // 沟通内容兼容回退：communication_content → meta.notes → 调用方已解析的 notes → planned_note（旧文字记录）
+    $planned = trim((string)($visitRow['planned_note'] ?? ''));
+    $priorNotes = trim((string)($visitRow['notes'] ?? ''));
+    $notesMeta = trim((string)($meta['notes'] ?? ''));
     $communication = trim((string)($meta['communication_content'] ?? ''));
     if ($communication === '') {
-        $communication = trim((string)($meta['notes'] ?? ''));
+        if ($notesMeta !== '') {
+            $communication = $notesMeta;
+        } elseif ($priorNotes !== '') {
+            $communication = $priorNotes;
+        } else {
+            $communication = $planned;
+        }
     }
+    $notesOut = $notesMeta !== '' ? $notesMeta : $communication;
     $progress = trim((string)($meta['followup_progress'] ?? ''));
     $participantsText = trim((string)($meta['participant_names'] ?? ''));
     $bgNotes = trim((string)($visitRow['background_check_note'] ?? ''));
@@ -181,7 +204,7 @@ function crm_visit_miniapp_meta_public(array $meta, array $visitRow = []): array
         'background_check_note' => $bgNotes,
         'start_time' => isset($meta['start_time']) ? substr((string)$meta['start_time'], 0, 5) : '',
         'end_time' => isset($meta['end_time']) ? substr((string)$meta['end_time'], 0, 5) : '',
-        'notes' => trim((string)($meta['notes'] ?? '')),
+        'notes' => $notesOut,
     ];
 }
 

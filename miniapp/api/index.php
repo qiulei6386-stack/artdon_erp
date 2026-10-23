@@ -468,7 +468,7 @@ function mx_visit_upload_with_photo_category(int $visitId, array $file, string $
         }
         return crm_visit_upload_files($visitId, $kind, $file, $fileRole);
     }
-    $allowed = ['group', 'site', 'sample', 'factory', 'other'];
+    $allowed = ['group', 'site', 'sample', 'factory', 'other', 'communication', 'progress', 'background_check'];
     if (!in_array($photoCategory, $allowed, true)) $photoCategory = 'other';
     if (!mx_compress_upload_under_1mb($file)) {
         $sz = (int)($file['size'] ?? 0);
@@ -1135,7 +1135,9 @@ function mx_visit_extra(array $row): array {
     $row['time_range'] = $s . ($e ? '–' . $e : '');
     $row['duration'] = mx_duration($s, $e);
     $row['visit_datetime'] = trim(($row['visit_date'] ?? '') . ' ' . $s);
-    $row['notes'] = (string)($meta['notes'] ?? $row['planned_note'] ?? '');
+    $metaNotes = trim((string)($meta['notes'] ?? ''));
+    $plannedNote = trim((string)($row['planned_note'] ?? ''));
+    $row['notes'] = $metaNotes !== '' ? $metaNotes : $plannedNote;
     $row['is_demo'] = (int)($meta['is_demo'] ?? 0);
     if (function_exists('crm_visit_miniapp_meta_public')) {
         $row = array_merge($row, crm_visit_miniapp_meta_public($meta, $row));
@@ -1159,8 +1161,13 @@ function mx_visit_extra(array $row): array {
         $fid = (int)($f['id'] ?? 0);
         if ($fid > 0 && mx_file_is_image($f)) {
             $f['url'] = mx_photo_url($fid);
-            $cat = trim((string)($f['photo_category'] ?? 'other'));
-            if (!in_array($cat, ['group', 'site', 'sample', 'factory', 'other'], true)) $cat = 'other';
+            $cat = trim((string)($f['photo_category'] ?? ''));
+            if ($cat === '' && function_exists('crm_visit_file_role_to_photo_category')) {
+                $cat = crm_visit_file_role_to_photo_category((string)($f['file_role'] ?? ''));
+            }
+            if ($cat === '') $cat = 'other';
+            $allowedCats = ['group', 'site', 'sample', 'factory', 'other', 'communication', 'progress', 'background_check'];
+            if (!in_array($cat, $allowedCats, true)) $cat = 'other';
             $pModel = (string)($pm[$fid]['model'] ?? '');
             $pNote = (string)($pm[$fid]['note'] ?? '');
             $pThumbs = mx_naming_thumbs_for_text(trim($pModel . ' ' . $pNote), 1);
