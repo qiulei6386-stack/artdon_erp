@@ -2,6 +2,7 @@
 require_once __DIR__ . '/crm_task_center.php';
 
 require_once __DIR__ . '/crm_customer.php';
+require_once __DIR__ . '/includes/crm_visit_miniapp.php';
 
 function crm_visit_ensure_tables(): void
 {
@@ -124,6 +125,7 @@ function crm_visit_ensure_tables(): void
     crm_visit_add_column('crm_visit_files', 'mime_type', "mime_type VARCHAR(120) NOT NULL DEFAULT '' AFTER file_size");
     crm_visit_add_column('crm_visit_files', 'uploaded_at', 'uploaded_at DATETIME NULL AFTER uploaded_by');
     crm_visit_add_column('crm_visit_results', 'result_source', "result_source VARCHAR(40) NOT NULL DEFAULT 'manual' AFTER need_dispatch");
+    crm_visit_miniapp_meta_ensure();
     crm_visit_ensure_permissions();
 }
 
@@ -570,8 +572,7 @@ function crm_visit_save(array $input): array
         $existing = crm_visit_find_by_request_id($clientRequestId, $userId);
         if ($existing) return crm_visit_saved_response($existing, true);
     }
-    $type = (string)($input['visit_type'] ?? 'customer_visit');
-    if (!in_array($type, ['customer_visit', 'customer_arrival'], true)) $type = 'customer_visit';
+    $type = crm_visit_normalize_type((string)($input['visit_type'] ?? 'customer_visit'));
     $customerId = (int)($input['customer_id'] ?? 0);
     if ($customerId <= 0) throw new RuntimeException('请选择客户。');
     $customer = crm_customer_get($customerId)['customer'] ?? null;
@@ -583,7 +584,12 @@ function crm_visit_save(array $input): array
         if (!in_array($purpose, crm_visit_followup_purposes(), true)) throw new RuntimeException('请选择跟进方式');
     }
     $title = trim((string)($input['title'] ?? ''));
-    $genericVisitTitle = ($type === 'customer_visit' ? '客户拜访：' : '客户来访：') . $customerName;
+    $genericVisitTitle = match ($type) {
+        'customer_arrival' => '客户来访：' . $customerName,
+        'video_meeting' => '视频会议：' . $customerName,
+        'daily_followup' => '平时跟进：' . $customerName,
+        default => '客户拜访：' . $customerName,
+    };
     if ($category === crm_visit_followup_category()) {
         if ($title === '' || $title === '客户拜访计划' || $title === $genericVisitTitle || $title === '客户拜访：' . $customerName) {
             $title = crm_visit_followup_title($customerName, $purpose);
@@ -611,7 +617,7 @@ function crm_visit_save(array $input): array
         'country' => trim((string)($input['country'] ?? ($customer['country'] ?? ''))),
         'city' => trim((string)($input['city'] ?? ($customer['city'] ?? ''))),
         'transport_method' => trim((string)($input['transport_method'] ?? '')),
-        'visitor_count' => (int)($input['visitor_count'] ?? 0),
+        'visitor_count' => max((int)($input['visitor_count'] ?? 0), (int)($input['participant_count'] ?? 0)),
         'status' => crm_visit_normalize_status((string)($input['status'] ?? 'pending_confirm'), (string)($before['status'] ?? '')),
         'need_sample' => !empty($input['need_sample']) ? 1 : 0,
         'need_material' => !empty($input['need_material']) ? 1 : 0,
@@ -628,6 +634,8 @@ function crm_visit_save(array $input): array
         'estimated_cost' => (float)($input['estimated_cost'] ?? 0),
         'planned_note' => trim((string)($input['planned_note'] ?? '')),
         'preparation_note' => trim((string)($input['preparation_note'] ?? '')),
+        'background_check_note' => trim((string)($input['background_check_notes'] ?? $input['background_check_note'] ?? '')),
+        'actual_people' => trim((string)($input['participants_text'] ?? $input['actual_people'] ?? $input['participant_names'] ?? '')),
         'customer_needs' => trim((string)($input['customer_needs'] ?? '')),
         'next_followup_time' => trim((string)($input['next_followup_time'] ?? '')) ?: null,
         'followup_offsets_json' => json_encode($followupOffsets, JSON_UNESCAPED_UNICODE),
@@ -1225,6 +1233,7 @@ function crm_visit_files(int $visitId): array
 
 function crm_visit_file_public_row(array $row): array
 {
+    $row['file_role'] = trim((string)($row['file_role'] ?? ''));
     $row['file_size_label'] = crm_visit_file_size_label((int)($row['file_size'] ?? 0));
     $row['is_image'] = strpos((string)($row['mime_type'] ?? ''), 'image/') === 0 || ($row['file_kind'] ?? '') === 'image';
     $row['is_pdf'] = (string)($row['mime_type'] ?? '') === 'application/pdf';
@@ -1279,12 +1288,22 @@ function crm_visit_normalize_files(array $files): array
     return $normalized;
 }
 
-function crm_visit_upload_files(int $visitId, string $kind, array $files): array
+function crm_visit_upload_files(int $visitId, string $kind, array $files, string $fileRole = ''): array
 {
     crm_visit_ensure_tables();
     crm_require('visit.file_upload');
     $visit = crm_visit_row($visitId);
     $kind = $kind === 'image' ? 'image' : 'attachment';
+    $fileRole = trim($fileRole);
+    if (!in_array($fileRole, ['communication', 'progress', 'followup_progress', 'background_check', ''], true)) {
+        $fileRole = '';
+    }
+    if ($fileRole === 'followup_progress') {
+        $fileRole = 'progress';
+    }
+    $photoCategory = $fileRole !== '' && function_exists('crm_visit_file_role_to_photo_category')
+        ? crm_visit_file_role_to_photo_category($fileRole)
+        : '';
     $items = crm_visit_normalize_files($files);
     if (!$items) throw new RuntimeException('请选择要上传的文件。');
     [$relativeDir, $absoluteDir] = crm_visit_upload_dir();
@@ -1320,18 +1339,37 @@ function crm_visit_upload_files(int $visitId, string $kind, array $files): array
         $absolutePath = $absoluteDir . '/' . $stored;
         if (!move_uploaded_file($file['tmp_name'], $absolutePath)) throw new RuntimeException($original . ' 保存失败。');
         $relativePath = $relativeDir . '/' . $stored;
-        db()->prepare("INSERT INTO crm_visit_files (visit_id, customer_id, file_kind, file_name, original_name, file_path, file_size, mime_type, uploaded_by, uploaded_at, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())")->execute([
-                $visitId,
-                (int)$visit['customer_id'],
-                $kind,
-                $stored,
-                $original,
-                $relativePath,
-                $size,
-                $mime,
-                (int)(current_user()['id'] ?? 0),
-            ]);
+        $hasPhotoCat = crm_visit_column_exists('crm_visit_files', 'photo_category');
+        if ($hasPhotoCat) {
+            db()->prepare("INSERT INTO crm_visit_files (visit_id, customer_id, file_kind, file_role, photo_category, file_name, original_name, file_path, file_size, mime_type, uploaded_by, uploaded_at, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())")->execute([
+                    $visitId,
+                    (int)$visit['customer_id'],
+                    $kind,
+                    $fileRole,
+                    $photoCategory,
+                    $stored,
+                    $original,
+                    $relativePath,
+                    $size,
+                    $mime,
+                    (int)(current_user()['id'] ?? 0),
+                ]);
+        } else {
+            db()->prepare("INSERT INTO crm_visit_files (visit_id, customer_id, file_kind, file_role, file_name, original_name, file_path, file_size, mime_type, uploaded_by, uploaded_at, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())")->execute([
+                    $visitId,
+                    (int)$visit['customer_id'],
+                    $kind,
+                    $fileRole,
+                    $stored,
+                    $original,
+                    $relativePath,
+                    $size,
+                    $mime,
+                    (int)(current_user()['id'] ?? 0),
+                ]);
+        }
         $fileId = (int)db()->lastInsertId();
         $saved[] = crm_visit_file_public_row(array_merge(crm_visit_file_row($fileId), ['uploaded_by_name' => current_user()['username'] ?? '']));
         crm_log_event('visit', $kind === 'image' ? 'visit_image_upload' : 'visit_attachment_upload', 'visit_file', (string)$fileId, null, ['visit_id' => $visitId, 'file_name' => $original]);

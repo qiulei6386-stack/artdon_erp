@@ -10,6 +10,7 @@ require __DIR__ . '/../../artdon_erp/includes/bootstrap.php';
 require __DIR__ . '/../../artdon_erp/crm_auth.php';
 require __DIR__ . '/../../artdon_erp/crm_log.php';
 require __DIR__ . '/../../artdon_erp/crm_visit.php';
+require_once __DIR__ . '/../../artdon_erp/includes/crm_visit_miniapp.php';
 
 
 /** Visit.country (general_ci) vs customer.country (unicode_ci) — unify to avoid Illegal mix of collations. */
@@ -352,6 +353,7 @@ function mx_compress_upload_under_1mb(array &$file): bool {
 /* ===== 小程序扩展：拜访来访 样品/待办/照片标注/时间段/示例数据 ===== */
 function mx_ensure(): void {
     static $done = false; if ($done) return; $done = true;
+    if (function_exists('crm_visit_miniapp_meta_ensure')) crm_visit_miniapp_meta_ensure();
     db()->exec("CREATE TABLE IF NOT EXISTS miniapp_visit_meta (
         visit_id INT PRIMARY KEY, start_time TIME NULL, end_time TIME NULL, notes TEXT NULL,
         is_demo TINYINT(1) NOT NULL DEFAULT 0, updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
@@ -416,6 +418,78 @@ function mx_token(): string {
 }
 function mx_photo_url(int $fid): string { return 'https://novlight.com/miniapp/api/?action=photo&id=' . $fid . '&token=' . urlencode(mx_token()); }
 function mx_business_card_url(int $fid): string { return 'https://novlight.com/miniapp/api/?action=customer_business_card&id=' . $fid . '&token=' . urlencode(mx_token()); }
+
+function mx_visit_file_url(int $fid): string { return 'https://novlight.com/miniapp/api/?action=visit_file&id=' . $fid . '&token=' . urlencode(mx_token()); }
+
+/** @param array<string,mixed> $contactCards */
+function mx_contact_cards_public(int $customerId, array $contactCards): array {
+    $out = ['front' => null, 'back' => null];
+    foreach (['front', 'back'] as $side) {
+        $row = $contactCards[$side] ?? null;
+        if (!is_array($row) || empty($row['id'])) continue;
+        $out[$side] = [
+            'id' => (int)$row['id'],
+            'side' => $side,
+            'file_name' => (string)($row['file_name'] ?? ''),
+            'file_size' => (int)($row['file_size'] ?? 0),
+            'created_at' => (string)($row['created_at'] ?? ''),
+            'url' => mx_business_card_url((int)$row['id']),
+        ];
+    }
+    return $out;
+}
+
+function mx_card_side_from_input(array $input): string {
+    $side = trim((string)($input['card_side'] ?? $input['side'] ?? $_POST['card_side'] ?? $_POST['side'] ?? 'front'));
+    return $side === 'back' ? 'back' : 'front';
+}
+
+function mx_card_ocr_enabled(array $input): bool {
+    $raw = $input['ocr'] ?? $_POST['ocr'] ?? null;
+    if ($raw === null || $raw === '') {
+        return mx_card_side_from_input($input) !== 'back';
+    }
+    if (in_array($raw, [0, '0', false], true)) return false;
+    if (in_array($raw, ['false', 'no', 'off'], true)) return false;
+    return true;
+}
+
+function mx_visit_upload_with_photo_category(int $visitId, array $file, string $photoCategory): array {
+    $photoCategory = trim($photoCategory);
+    if (in_array($photoCategory, ['communication', 'progress', 'background_check'], true)) {
+        $fileRole = function_exists('crm_visit_photo_category_to_file_role')
+            ? crm_visit_photo_category_to_file_role($photoCategory)
+            : $photoCategory;
+        $mime = strtolower((string)($file['type'] ?? ''));
+        $kind = strpos($mime, 'image/') === 0 ? 'image' : 'attachment';
+        if ($kind === 'image' && !mx_compress_upload_under_1mb($file)) {
+            $sz = (int)($file['size'] ?? 0);
+            if ($sz > 1048576) mapi_out(false, '图片过大，压缩后仍超过1MB，请换一张较小的图');
+        }
+        return crm_visit_upload_files($visitId, $kind, $file, $fileRole);
+    }
+    $allowed = ['group', 'site', 'sample', 'factory', 'other'];
+    if (!in_array($photoCategory, $allowed, true)) $photoCategory = 'other';
+    if (!mx_compress_upload_under_1mb($file)) {
+        $sz = (int)($file['size'] ?? 0);
+        if ($sz > 1048576) mapi_out(false, '图片过大，压缩后仍超过1MB，请换一张较小的图');
+    }
+    $r = crm_visit_upload_files($visitId, 'image', $file);
+    foreach ((array)($r['uploaded'] ?? []) as $f) {
+        if (!empty($f['id']) && function_exists('crm_visit_column_exists') && crm_visit_column_exists('crm_visit_files', 'photo_category')) {
+            db()->prepare('UPDATE crm_visit_files SET photo_category=? WHERE id=?')->execute([$photoCategory, (int)$f['id']]);
+        }
+    }
+    return $r;
+}
+
+function mx_normalize_visit_type_input(array $input, bool $isFollowupCategory): string {
+    if ($isFollowupCategory) return 'customer_visit';
+    $type = trim((string)($input['visit_type'] ?? 'customer_visit'));
+    if ($type === 'customer_arrival') return 'customer_arrival';
+    if (function_exists('crm_visit_normalize_type')) return crm_visit_normalize_type($type);
+    return in_array($type, ['customer_visit', 'customer_arrival', 'video_meeting', 'daily_followup'], true) ? $type : 'customer_visit';
+}
 /** Stream crm_customer_files image (absolute file_path) for WeChat <image>. */
 function mx_stream_customer_file(array $f): void {
     $path = (string)($f['file_path'] ?? '');
@@ -1021,10 +1095,18 @@ function mx_visit_kind(array $row): array {
     if (function_exists('crm_visit_is_followup_record') && crm_visit_is_followup_record($row)) {
         return ['record_kind' => 'followup', 'type_label' => '跟进'];
     }
-    if (($row['visit_type'] ?? '') === 'customer_arrival') {
+    $type = (string)($row['visit_type'] ?? '');
+    if ($type === 'customer_arrival') {
         return ['record_kind' => 'arrival', 'type_label' => '来访'];
     }
-    return ['record_kind' => 'visit', 'type_label' => '拜访'];
+    if ($type === 'video_meeting') {
+        return ['record_kind' => 'video_meeting', 'type_label' => '视频会议'];
+    }
+    if ($type === 'daily_followup') {
+        return ['record_kind' => 'daily_followup', 'type_label' => '平时跟进'];
+    }
+    $label = function_exists('crm_visit_type_label_for_row') ? crm_visit_type_label_for_row($row) : '拜访';
+    return ['record_kind' => 'visit', 'type_label' => $label];
 }
 
 /** 拜访/来访列表默认排除跟进记录；传 visit_category=跟进记录 时只返回跟进。 */
@@ -1055,6 +1137,19 @@ function mx_visit_extra(array $row): array {
     $row['visit_datetime'] = trim(($row['visit_date'] ?? '') . ' ' . $s);
     $row['notes'] = (string)($meta['notes'] ?? $row['planned_note'] ?? '');
     $row['is_demo'] = (int)($meta['is_demo'] ?? 0);
+    if (function_exists('crm_visit_miniapp_meta_public')) {
+        $row = array_merge($row, crm_visit_miniapp_meta_public($meta, $row));
+    }
+    if (function_exists('crm_visit_files_by_role')) {
+        $grouped = crm_visit_files_by_role((array)($row['files'] ?? []));
+        foreach (['communication', 'progress', 'background_check'] as $role) {
+            $row[$role . '_attachments'] = array_map(static function ($f) {
+                $fid = (int)($f['id'] ?? 0);
+                $f['url'] = $fid > 0 ? mx_visit_file_url($fid) : '';
+                return $f;
+            }, $grouped[$role] ?? []);
+        }
+    }
     $pm = [];
     $st = db()->prepare("SELECT * FROM miniapp_photo_meta WHERE visit_id=?"); $st->execute([$id]);
     foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $r) $pm[(int)$r['file_id']] = $r;
@@ -1480,6 +1575,10 @@ function mx_naming_thumbs_for_text(string $text, int $limit = 3): array {
 
 
 function mx_meta_save(int $visitId, array $in): void {
+    if (function_exists('crm_visit_miniapp_meta_save')) {
+        crm_visit_miniapp_meta_save($visitId, $in);
+        return;
+    }
     $s = mx_time_in($in['start_time'] ?? $in['visit_time'] ?? ''); $e = mx_time_in($in['end_time'] ?? '');
     db()->prepare("INSERT INTO miniapp_visit_meta (visit_id, start_time, end_time, notes) VALUES (?,?,?,?)
         ON DUPLICATE KEY UPDATE start_time=VALUES(start_time), end_time=VALUES(end_time), notes=VALUES(notes)")
@@ -2112,6 +2211,12 @@ function mx_translate_zh_en(array $texts): array {
                     'purposes' => crm_visit_followup_purposes(),
                     'location_required' => false,
                 ],
+                'visit_types' => [
+                    ['code' => 'customer_visit', 'label' => '拜访', 'record_kind' => 'visit'],
+                    ['code' => 'customer_arrival', 'label' => '来访', 'record_kind' => 'arrival'],
+                    ['code' => 'video_meeting', 'label' => '视频会议', 'record_kind' => 'video_meeting'],
+                    ['code' => 'daily_followup', 'label' => '平时跟进', 'record_kind' => 'daily_followup'],
+                ],
             ];
             if ($withMeta) {
                 $scope = crm_visit_scope_sql('v');
@@ -2217,7 +2322,15 @@ function mx_translate_zh_en(array $texts): array {
                 $input['purpose'] = $purpose;
                 $category = crm_visit_followup_category();
             }
-            $type = ($input['visit_type'] ?? 'customer_visit') === 'customer_arrival' ? 'customer_arrival' : 'customer_visit';
+            $type = mx_normalize_visit_type_input($input, $isFollowup);
+            $needsProgress = $isFollowup || $type === 'daily_followup';
+            if ($needsProgress) {
+                $progressUpdate = trim((string)($input['progress_update'] ?? ''));
+                if ($progressUpdate === '') {
+                    mapi_out(false, '请填写跟进进度（progress_update）');
+                }
+            }
+            $participantsText = trim((string)($input['participants_text'] ?? $input['participant_names'] ?? (is_string($input['participants'] ?? null) ? $input['participants'] : '')));
             $data = [
                 'visit_id' => (int)($input['id'] ?? 0),
                 'visit_type' => $type,
@@ -2229,7 +2342,13 @@ function mx_translate_zh_en(array $texts): array {
                 'visit_date' => trim((string)($input['visit_date'] ?? '')),
                 'visit_time' => (string)(mx_time_in($input['start_time'] ?? $input['visit_time'] ?? '') ?? ''),
                 'location' => trim((string)($input['location'] ?? '')),
-                'visitor_count' => (int)($input['visitor_count'] ?? 0),
+                'visitor_count' => max((int)($input['visitor_count'] ?? 0), (int)($input['participant_count'] ?? 0)),
+                'participant_count' => max((int)($input['participant_count'] ?? 0), (int)($input['visitor_count'] ?? 0)),
+                'participants_text' => $participantsText,
+                'participant_names' => $participantsText,
+                'actual_people' => $participantsText !== '' ? $participantsText : trim((string)($input['actual_people'] ?? '')),
+                'background_check_notes' => trim((string)($input['background_check_notes'] ?? $input['background_check_note'] ?? '')),
+                'background_check_note' => trim((string)($input['background_check_notes'] ?? $input['background_check_note'] ?? '')),
                 'status' => 'pending_execute',  // 移动端简化：建单即待执行
                 'client_request_id' => trim((string)($input['client_request_id'] ?? '')),
                 // 来访接待需求
@@ -2239,7 +2358,7 @@ function mx_translate_zh_en(array $texts): array {
                 'need_meeting_room' => !empty($input['need_meeting_room']), 'need_factory_tour' => !empty($input['need_factory_tour']),
                 'need_pickup' => !empty($input['need_pickup']), 'need_hotel' => !empty($input['need_hotel']),
                 'need_catering' => !empty($input['need_catering']),
-                'planned_note' => trim((string)($input['notes'] ?? $input['planned_note'] ?? '')),
+                'planned_note' => trim((string)($input['communication_content'] ?? $input['notes'] ?? $input['planned_note'] ?? '')),
             ];
             $isEdit = (int)($input['id'] ?? 0) > 0;
             $r = crm_visit_save($data);
@@ -2252,9 +2371,16 @@ function mx_translate_zh_en(array $texts): array {
                 mx_audit_log($isEdit ? 'visit_edit' : 'visit_create', $isEdit ? '编辑跟进' : '新建跟进', 'visit', $vidSaved, $vname);
                 mapi_out(true, $isEdit ? '跟进记录已保存' : '跟进记录已创建', $r);
             }
-            if ($isEdit) mx_audit_log('visit_edit', '编辑拜访', 'visit', $vidSaved, $vname);
-            else mx_audit_log('visit_create', $type === 'customer_visit' ? '新建拜访' : '新建来访', 'visit', $vidSaved, $vname);
-            mapi_out(true, $type === 'customer_visit' ? '拜访计划已创建' : '来访接待单已创建', $r);
+            $typeLabels = [
+                'customer_visit' => ['edit' => '编辑拜访', 'create' => '新建拜访', 'ok' => '拜访计划已创建'],
+                'customer_arrival' => ['edit' => '编辑来访', 'create' => '新建来访', 'ok' => '来访接待单已创建'],
+                'video_meeting' => ['edit' => '编辑视频会议', 'create' => '新建视频会议', 'ok' => '视频会议已创建'],
+                'daily_followup' => ['edit' => '编辑平时跟进', 'create' => '新建平时跟进', 'ok' => '平时跟进已保存'],
+            ];
+            $tl = $typeLabels[$type] ?? $typeLabels['customer_visit'];
+            if ($isEdit) mx_audit_log('visit_edit', $tl['edit'], 'visit', $vidSaved, $vname);
+            else mx_audit_log('visit_create', $tl['create'], 'visit', $vidSaved, $vname);
+            mapi_out(true, $isEdit ? '记录已保存' : $tl['ok'], $r);
             break;
         }
 
@@ -2266,7 +2392,9 @@ function mx_translate_zh_en(array $texts): array {
             if ($id <= 0 || $lat == 0 || $lng == 0) mapi_out(false, '参数错误');
             $row = crm_visit_row($id); // 顺带鉴权
             if (crm_visit_is_followup_record($row)) mapi_out(false, '跟进记录不需要签到');
-            if ($row['visit_type'] !== 'customer_visit') mapi_out(false, '来访不需要签到');
+            if ((string)($row['visit_type'] ?? '') !== 'customer_visit') {
+                mapi_out(false, '该类型记录不需要签到');
+            }
             db()->prepare("INSERT INTO miniapp_checkins (visit_id, user_id, lat, lng, address) VALUES (?, ?, ?, ?, ?)")
                 ->execute([$id, (int)$me['user_id'], $lat, $lng, substr(trim((string)($input['address'] ?? '')), 0, 255)]);
             db()->prepare("UPDATE crm_visit_records SET status='executing', updated_at=NOW() WHERE id=? AND status IN ('pending_execute','confirmed','pending_confirm')")
@@ -2403,21 +2531,33 @@ function mx_translate_zh_en(array $texts): array {
             crm_visit_row($id); // 鉴权
             if (empty($_FILES['file'])) mapi_out(false, '没有文件');
             $cat = trim((string)($input['photo_category'] ?? $_POST['photo_category'] ?? 'other'));
-            $allowed = ['group', 'site', 'sample', 'factory', 'other'];
-            if (!in_array($cat, $allowed, true)) $cat = 'other';
-            // Server-side: force under 1MB (max edge 1920) before CRM store
-            if (!mx_compress_upload_under_1mb($_FILES['file'])) {
-                $sz = (int)($_FILES['file']['size'] ?? 0);
-                if ($sz > 1048576) mapi_out(false, '图片过大，压缩后仍超过1MB，请换一张较小的图');
-            }
-            $r = crm_visit_upload_files($id, 'image', $_FILES['file']);
+            $r = mx_visit_upload_with_photo_category($id, $_FILES['file'], $cat);
             foreach ((array)($r['uploaded'] ?? []) as $f) {
-                if (!empty($f['id'])) db()->prepare("UPDATE crm_visit_files SET photo_category=? WHERE id=?")->execute([$cat, (int)$f['id']]);
                 $pmModel = trim((string)($_POST['model'] ?? $input['model'] ?? '')); $pmNote = trim((string)($_POST['note'] ?? $input['note'] ?? ''));
-                if (!empty($f['id'])) { mx_ensure(); db()->prepare("INSERT INTO miniapp_photo_meta (file_id, visit_id, model, note) VALUES (?,?,?,?) ON DUPLICATE KEY UPDATE model=VALUES(model), note=VALUES(note)")->execute([(int)$f['id'], $id, mb_substr($pmModel,0,120), mb_substr($pmNote,0,500)]); }
+                if (!empty($f['id']) && !in_array($cat, ['communication', 'progress', 'background_check'], true)) {
+                    mx_ensure();
+                    db()->prepare("INSERT INTO miniapp_photo_meta (file_id, visit_id, model, note) VALUES (?,?,?,?) ON DUPLICATE KEY UPDATE model=VALUES(model), note=VALUES(note)")->execute([(int)$f['id'], $id, mb_substr($pmModel,0,120), mb_substr($pmNote,0,500)]);
+                }
             }
             mx_audit_log('photo_upload', '上传照片', 'visit', $id, mx_audit_visit_name($id), $cat);
             mapi_out(true, '上传成功', $r);
+            break;
+        }
+
+        case 'visit_attachment_upload': {
+            mapi_auth($input);
+            $id = (int)($input['visit_id'] ?? $_POST['visit_id'] ?? 0);
+            if ($id <= 0) mapi_out(false, '参数错误');
+            crm_visit_row($id);
+            if (empty($_FILES['file'])) mapi_out(false, '没有文件');
+            $cat = trim((string)($input['photo_category'] ?? $_POST['photo_category'] ?? $input['file_role'] ?? $_POST['file_role'] ?? 'communication'));
+            if ($cat === 'followup_progress') $cat = 'progress';
+            if (!in_array($cat, ['communication', 'progress', 'background_check'], true)) {
+                mapi_out(false, '附件类型无效，photo_category 请使用 communication / progress / background_check');
+            }
+            $r = mx_visit_upload_with_photo_category($id, $_FILES['file'], $cat);
+            mx_audit_log('visit_attachment_upload', '上传跟进附件', 'visit', $id, mx_audit_visit_name($id), $cat);
+            mapi_out(true, '附件上传成功', $r);
             break;
         }
 
@@ -2505,15 +2645,35 @@ function mx_translate_zh_en(array $texts): array {
             $f = crm_visit_file_row($fid);
             mx_stream_visit_photo($f);
         }
-        case 'customer_business_card': {
-            // 客户名片原图（crm_customer_files.category=business_card）
+        case 'visit_file': {
             mapi_auth($input); mx_ensure();
             $fid = (int)($input['id'] ?? 0);
             if ($fid <= 0) { http_response_code(404); exit; }
-            $st = db()->prepare("SELECT * FROM crm_customer_files WHERE id=? AND category='business_card' AND deleted_at IS NULL LIMIT 1");
-            $st->execute([$fid]);
-            $f = $st->fetch(PDO::FETCH_ASSOC);
-            if (!$f) { http_response_code(404); exit; }
+            $f = crm_visit_file_row($fid);
+            if (mx_file_is_image($f)) {
+                mx_stream_visit_photo($f);
+            }
+            $path = __DIR__ . '/../../artdon_erp/' . ltrim((string)($f['file_path'] ?? ''), '/');
+            if (!is_file($path)) { http_response_code(404); exit; }
+            if (session_status() === PHP_SESSION_ACTIVE) session_write_close();
+            header('Content-Type: ' . (($f['mime_type'] ?? '') ?: 'application/octet-stream'));
+            header('Content-Length: ' . (string)filesize($path));
+            header('Content-Disposition: inline; filename="' . rawurlencode((string)($f['original_name'] ?: $f['file_name'])) . '"');
+            readfile($path);
+            exit;
+        }
+        case 'customer_business_card': {
+            mapi_auth($input); mx_ensure();
+            $fid = (int)($input['id'] ?? 0);
+            if ($fid <= 0) { http_response_code(404); exit; }
+            if (!function_exists('crm_customer_business_card_file')) {
+                require_once __DIR__ . '/../../artdon_erp/crm_customer.php';
+            }
+            try {
+                $f = crm_customer_business_card_file($fid);
+            } catch (Throwable $e) {
+                http_response_code(404); exit;
+            }
             mx_stream_customer_file($f);
         }
         case 'photo_meta_save': {
@@ -3127,7 +3287,9 @@ function mx_translate_zh_en(array $texts): array {
             $contactWhatsapp = trim((string)($input['contact_whatsapp'] ?? ''));
             $contactWechat = trim((string)($input['contact_wechat'] ?? ''));
             $contactPosition = trim((string)($input['contact_position'] ?? ''));
-            if ($contactName !== '' || $contactEmail !== '' || $contactPhone !== '' || $contactWhatsapp !== '' || $contactWechat !== '' || $contactChannels) {
+            if (!empty($input['contacts']) && is_array($input['contacts'])) {
+                $payload['contacts'] = $input['contacts'];
+            } elseif ($contactName !== '' || $contactEmail !== '' || $contactPhone !== '' || $contactWhatsapp !== '' || $contactWechat !== '' || $contactChannels) {
                 $cname = $contactName !== '' ? $contactName : ($contactEmail !== '' ? explode('@', $contactEmail)[0] : ($contactWechat !== '' ? $contactWechat : '联系人'));
                 $contactRow = [
                     'name' => $cname,
@@ -3142,6 +3304,8 @@ function mx_translate_zh_en(array $texts): array {
                     $contactRow['promotion_channels'] = $contactChannels;
                     $contactRow['contact_promotion_channels'] = $contactChannels;
                 }
+                $contactRow['business_card_front_token'] = trim((string)($input['business_card_front_token'] ?? $input['business_card_token'] ?? ''));
+                $contactRow['business_card_back_token'] = trim((string)($input['business_card_back_token'] ?? ''));
                 $payload['contacts'] = [$contactRow];
                 $payload['contact_name'] = $cname;
                 $payload['contact_email'] = $contactEmail;
@@ -3200,32 +3364,104 @@ function mx_translate_zh_en(array $texts): array {
             ]);
         }
 
-        case 'customer_business_card_ocr': {
-            // 复用官网腾讯 BusinessCardOCR：同一 crm_customer_business_card_ocr
+        case 'customer_business_card_ocr':
+        case 'customer_business_card_upload': {
             mapi_auth($input);
-            if (!function_exists('crm_customer_business_card_ocr')) {
+            if (!function_exists('crm_customer_business_card_store_pending_upload')) {
                 require_once __DIR__ . '/../../artdon_erp/crm_customer.php';
             }
+            $cardSide = mx_card_side_from_input($input);
+            $doOcr = mx_card_ocr_enabled($input);
+            if ($cardSide === 'back') $doOcr = false;
             $file = [];
             if (!empty($_FILES['image'])) $file = $_FILES['image'];
             elseif (!empty($_FILES['file'])) $file = $_FILES['file'];
-            if (!$file) mapi_out(false, '请选择需要识别的名片图片');
-            // 小程序上传可能超过 5MB：先压到 OCR 上限内（保留可读清晰度）
+            if (!$file) mapi_out(false, '请选择名片图片');
             $tmp = (string)($file['tmp_name'] ?? '');
             $size = (int)($file['size'] ?? 0);
             if ($size <= 0 && $tmp !== '' && is_file($tmp)) $size = (int)@filesize($tmp);
-            if ($size > 5 * 1024 * 1024) {
-                if (!mx_compress_upload_under_1mb($file)) {
-                    mapi_out(false, '名片图片须小于 5MB，请换一张清晰照片');
+            if ($size > 5 * 1024 * 1024 && !mx_compress_upload_under_1mb($file)) {
+                mapi_out(false, '名片图片须小于 5MB，请换一张清晰照片');
+            }
+            if (!$doOcr) {
+                try {
+                    $token = crm_customer_business_card_store_pending_upload($file);
+                } catch (Throwable $e) {
+                    mapi_out(false, $e->getMessage() ?: '名片图片保存失败');
                 }
+                $data = [
+                    'card_side' => $cardSide,
+                    'ocr' => 0,
+                    'business_card_token' => $token,
+                ];
+                if ($cardSide === 'back') {
+                    $data['business_card_back_token'] = $token;
+                } else {
+                    $data['business_card_front_token'] = $token;
+                }
+                mapi_out(true, '名片已上传（未做 OCR）', $data);
             }
             $result = crm_customer_business_card_ocr($file);
             $ocrName = '';
             if (is_array($result)) {
                 $ocrName = (string)($result['company'] ?? $result['customer_name'] ?? $result['name'] ?? '');
+                $tok = (string)($result['business_card_token'] ?? '');
+                if ($tok !== '') {
+                    $result['business_card_front_token'] = $tok;
+                    $result['card_side'] = 'front';
+                    $result['ocr'] = 1;
+                }
             }
             mx_audit_log('business_card_ocr', '名片识别', 'customer', 0, $ocrName);
             mapi_out(true, '名片识别完成，请确认后应用到客户表单', $result);
+            break;
+        }
+
+        case 'contact_save': {
+            mapi_auth($input); mx_ensure();
+            if (!function_exists('crm_contact_create')) {
+                require_once __DIR__ . '/../../artdon_erp/crm_customer.php';
+            }
+            $customerId = (int)($input['customer_id'] ?? 0);
+            $contactId = (int)($input['id'] ?? $input['contact_id'] ?? 0);
+            if ($customerId <= 0) mapi_out(false, '请指定客户');
+            $name = trim((string)($input['name'] ?? $input['contact_name'] ?? ''));
+            if ($name === '') mapi_out(false, '请填写联系人姓名');
+            $email = trim((string)($input['email'] ?? $input['contact_email'] ?? ''));
+            if ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) mapi_out(false, '联系人邮箱格式不正确');
+            $row = [
+                'customer_id' => $customerId,
+                'name' => $name,
+                'name_en' => trim((string)($input['name_en'] ?? '')),
+                'position' => trim((string)($input['position'] ?? $input['contact_position'] ?? '')),
+                'department' => trim((string)($input['department'] ?? '')),
+                'email' => $email,
+                'phone' => trim((string)($input['phone'] ?? $input['contact_phone'] ?? '')),
+                'whatsapp' => trim((string)($input['whatsapp'] ?? $input['contact_whatsapp'] ?? '')),
+                'wechat' => trim((string)($input['wechat'] ?? $input['contact_wechat'] ?? '')),
+                'linkedin' => trim((string)($input['linkedin'] ?? '')),
+                'remark' => trim((string)($input['remark'] ?? '')),
+                'is_primary' => !empty($input['is_primary']) ? 1 : 0,
+                'business_card_front_token' => trim((string)($input['business_card_front_token'] ?? $input['business_card_token'] ?? '')),
+                'business_card_back_token' => trim((string)($input['business_card_back_token'] ?? '')),
+            ];
+            if ($contactId > 0) {
+                crm_contact_update($contactId, $row);
+                $cards = function_exists('crm_contact_business_cards') ? crm_contact_business_cards($contactId) : ['front' => null, 'back' => null, 'legacy' => []];
+                mapi_out(true, '联系人已更新', ['id' => $contactId, 'business_cards' => mx_contact_cards_public($customerId, $cards)]);
+            } else {
+                crm_contact_create($row);
+                $st = db()->prepare('SELECT id FROM crm_contacts WHERE customer_id=? AND deleted_at IS NULL ORDER BY id DESC LIMIT 1');
+                $st->execute([$customerId]);
+                $newId = (int)$st->fetchColumn();
+                if ($newId > 0 && function_exists('crm_customer_attach_contact_business_cards')) {
+                    crm_customer_attach_contact_business_cards($customerId, $newId, $row);
+                }
+                $cards = $newId > 0 && function_exists('crm_contact_business_cards') ? crm_contact_business_cards($newId) : ['front' => null, 'back' => null, 'legacy' => []];
+                mx_audit_log('contact_save', '保存联系人', 'customer', $customerId, $name);
+                mapi_out(true, '联系人已创建', ['id' => $newId, 'business_cards' => mx_contact_cards_public($customerId, $cards)]);
+            }
+            break;
         }
 
         case 'customer_detail': {
@@ -3379,6 +3615,10 @@ function mx_translate_zh_en(array $texts): array {
                     $ct['is_primary'] = (int)($ct['is_primary'] ?? 0);
                     $ct['promotion_channels'] = $contactPromoMap[(int)$ct['id']] ?? [];
                     $ct['promotion_labels'] = array_map(static fn($x) => $x['label'], $ct['promotion_channels']);
+                    if (function_exists('crm_contact_business_cards')) {
+                        $cards = crm_contact_business_cards((int)$ct['id']);
+                        $ct['business_cards'] = mx_contact_cards_public($cid, $cards);
+                    }
                 }
                 unset($ct);
             } catch (Throwable $e) {

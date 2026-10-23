@@ -1,5 +1,14 @@
 # Artdon ERP 工作上下文
 
+## 2026-10-23：小程序名片 / 跟进 API 与前端字段对齐
+
+- 本次完成：扩展 `miniapp/api` 与 CRM 拜访/客户模块，字段名与 yada-crm-miniprogram 体验版一致：`card_side` / `ocr` 名片上传；`business_card_back_token` 随 `customer_create` / `contact_save`；拜访类型 `video_meeting`、`daily_followup`；`visit_save` 使用 `participants_text`、`participant_count`、`background_check_notes`、`progress_update`（跟进与平时跟进必填）；附件 `photo_category` = `communication` / `progress` / `background_check`。新增 `includes/crm_visit_miniapp.php`、`miniapp/migrate.php` 补列、契约测试与 `docs/miniapp-api-card-followup.md`；网页 CRM 列表补充新拜访类型标签。
+- 修改文件：`miniapp/api/index.php`、`includes/crm_visit_miniapp.php`、`crm_visit.php`、`crm_customer.php`、`miniapp/migrate.php`、`assets/crm/crm.js`、`tools/ci_php_checks.sh`、`tests/miniapp_card_followup_contract.php`、`docs/miniapp-api-card-followup.md`、本文件。
+- 检查结果：`php -l miniapp/api/index.php` 及 touched CRM PHP 通过；`php tests/miniapp_card_followup_contract.php` 通过。云环境无 MySQL PDO，未做 live OCR/写库 E2E。
+- 服务器部署情况：本环境未部署。合并分支后快进 `artdon_erp` 与 `miniapp/api` 至 `/www/wwwroot/Artdon/`，执行 `php miniapp/migrate.php`。
+- Git 提交号及推送状态：`78458c0` 分支 `cursor/miniapp-card-followup-api-15dd`（推送后更新）。
+- 尚未完成：合并后在生产库跑 migrate；用体验版小程序走通名片双面、视频会议/平时跟进保存与三类附件上传。
+
 ## 2026-10-22：易飞镜像新加坡 Feed API（芯片/驱动/电源）
 
 - 本次完成：新增只读 `GET yifei_sync/feed.php`，供新加坡店（IP `43.160.202.212`）用 `X-Feed-Token` 分页拉取 `yf_invmb` 中芯片（`A5-1-%`）、驱动（`A5-2-%`）、电源（品名含「电源」且排除电线/线材/电缆/电源线）。独立密钥文件 `/www/server/artdon_secrets/yifei_feed.php`（示例 `feed_secret.example.php`），不复用 ingest 的 `yifei_sync.php` / `X-Yifei-Token`。`feed_brand.php` 统一品牌词典；`category` 冲突时 chip > driver > power。`api.php` 未改。
