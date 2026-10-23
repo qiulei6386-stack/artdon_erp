@@ -69,5 +69,19 @@ if ($pub['background_check_notes'] !== '背调说明' || $pub['background_check_
 if ($pub['participants_text'] !== '张三,李四' || $pub['participant_count'] !== 2) {
     throw new RuntimeException('参会人字段不对');
 }
+$emptyMeta = crm_visit_miniapp_meta_public(['notes' => '', 'communication_content' => ''], [
+    'planned_note' => '旧文字记录正文',
+    'notes' => '',
+]);
+if ($emptyMeta['communication_content'] !== '旧文字记录正文' || $emptyMeta['text_record'] !== '旧文字记录正文') {
+    throw new RuntimeException('空 meta 时应回退 planned_note 作为沟通内容');
+}
+$fromPrior = crm_visit_miniapp_meta_public(['notes' => '', 'communication_content' => ''], [
+    'planned_note' => '',
+    'notes' => '行内已有备注',
+]);
+if ($fromPrior['communication_content'] !== '行内已有备注') {
+    throw new RuntimeException('空 meta 时应回退 visit 行 notes');
+}
 
 echo "miniapp card/followup contract OK\n";
