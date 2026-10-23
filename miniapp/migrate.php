@@ -1,6 +1,6 @@
 <?php
 // 小程序后端迁移脚本（CLI 运行）
-require __DIR__ . '/../artdon_erp/includes/bootstrap.php';
+require __DIR__ . '/../includes/bootstrap.php';
 $pdo = db();
 
 function tableExists(PDO $pdo, string $table): bool {
