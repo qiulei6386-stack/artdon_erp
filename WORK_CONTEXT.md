@@ -1,5 +1,14 @@
 # Artdon ERP 工作上下文
 
+## 2026-10-23：小程序报价试算 API 热修入库
+
+- 本次完成：将生产已部署的报价试算后端补丁纳入仓库——新增 `miniapp/api/quotation.php`、`quotation_calculation.php`；`index.php` 注册 `case 'quotation'`（`mapi_auth` + require）；`mx_audit_log` 返回 `bool` 供试算审计写入结果判断。
+- 修改文件：`miniapp/api/index.php`、`miniapp/api/quotation.php`、`miniapp/api/quotation_calculation.php`、本文件。
+- 检查结果：`php -l` 通过上述三个 PHP 文件。云环境未做带 token 的 live 试算 E2E。
+- 服务器部署情况：生产已热修；合并本 PR 后下次整包部署不会覆盖丢失。合并后确认 `/www/wwwroot/Artdon/miniapp/api/` 与 GitHub 同一提交。
+- Git 提交号及推送状态：见分支 `cursor/miniapp-quotation-api-4ba9`（推送后更新）。
+- 尚未完成：合并后在微信体验版复测组合报价/试算（不应再出现「未知接口: quotation」）。
+
 ## 2026-10-23：拜访详情沟通内容回退（生产热修复入库）
 
 - 本次完成：将生产已修版本同步入仓。`crm_visit_miniapp_meta_public` 在 `communication_content` 与 `meta.notes` 为空时依次回退调用方 `notes`、`planned_note`（旧「文字记录」）；`crm_visit_miniapp_meta_save` 在保存时同步 `notes` 与 `communication_content`，避免只写一侧导致详情空白。`miniapp/api/index.php` 的 `mx_visit_extra` 仅在 `meta.notes` 非空时覆盖 `planned_note`；照片 `photo_category` 白名单增加 `communication` / `progress` / `background_check`，并从 `file_role` 推导分类。
