@@ -507,6 +507,8 @@ function crm_customer_ensure_tables(): void
         KEY idx_file_customer (customer_id),
         KEY idx_file_deleted (deleted_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+    crm_add_column_safe('crm_customer_files', 'contact_id', 'contact_id INT UNSIGNED NULL AFTER customer_id');
+    crm_add_index_safe('crm_customer_files', 'idx_file_contact', '(contact_id, deleted_at)');
 
     crm_add_index_safe('crm_customers', 'idx_customer_list_updated', '(deleted_at, updated_at, id)');
     crm_add_index_safe('crm_customers', 'idx_customer_list_created', '(deleted_at, created_at, id)');
@@ -4044,23 +4046,82 @@ function crm_customer_business_card_store_pending(string $source): string
     return $token;
 }
 
-function crm_customer_business_card_attach(int $customerId, string $token): ?array
+function crm_customer_business_card_category(string $side): string
+{
+    return $side === 'back' ? 'business_card_back' : 'business_card_front';
+}
+
+function crm_customer_business_card_attach(int $customerId, string $token, int $contactId = 0, string $side = 'front'): ?array
 {
     $token = preg_replace('/[^a-f0-9]/i', '', $token);
     if ($customerId <= 0 || strlen($token) !== 40) return null;
+    $side = $side === 'back' ? 'back' : 'front';
     $source = __DIR__ . '/storage/customer_files/pending_business_cards/' . $token . '.jpg';
     if (!is_file($source)) return null;
     $dir = __DIR__ . '/storage/customer_files/' . $customerId;
     if (!is_dir($dir)) @mkdir($dir, 0775, true);
     if (!is_dir($dir) || !is_writable($dir)) throw new RuntimeException('客户名片目录不可写。');
-    $name = 'business_card_' . date('Ymd_His') . '.jpg';
+    $name = 'business_card_' . $side . '_' . date('Ymd_His') . '.jpg';
     $target = $dir . '/' . bin2hex(random_bytes(6)) . '_' . $name;
     if (!@rename($source, $target) && !(@copy($source, $target) && @unlink($source))) throw new RuntimeException('名片图片关联客户失败。');
-    db()->prepare('INSERT INTO crm_customer_files (customer_id,file_name,file_path,file_type,file_size,category,remark,uploaded_by,created_at) VALUES (?,?,?,?,?,?,?,?,NOW())')
-        ->execute([$customerId,$name,$target,'image/jpeg',(int)(filesize($target) ?: 0),'business_card','CRM 名片 OCR 原图（已压缩）',(int)(current_user()['id'] ?? 0)]);
+    $category = $contactId > 0 ? crm_customer_business_card_category($side) : 'business_card';
+    $remark = $contactId > 0
+        ? ($side === 'back' ? '联系人名片背面（存档）' : '联系人名片正面（OCR 来源）')
+        : 'CRM 名片 OCR 原图（已压缩）';
+    $hasContactCol = function_exists('crm_table_columns_safe') && in_array('contact_id', crm_table_columns_safe('crm_customer_files'), true);
+    if ($hasContactCol) {
+        db()->prepare('INSERT INTO crm_customer_files (customer_id, contact_id, file_name, file_path, file_type, file_size, category, remark, uploaded_by, created_at) VALUES (?,?,?,?,?,?,?,?,?,NOW())')
+            ->execute([$customerId, $contactId > 0 ? $contactId : null, $name, $target, 'image/jpeg', (int)(filesize($target) ?: 0), $category, $remark, (int)(current_user()['id'] ?? 0)]);
+    } else {
+        db()->prepare('INSERT INTO crm_customer_files (customer_id,file_name,file_path,file_type,file_size,category,remark,uploaded_by,created_at) VALUES (?,?,?,?,?,?,?,?,NOW())')
+            ->execute([$customerId, $name, $target, 'image/jpeg', (int)(filesize($target) ?: 0), $category, $remark, (int)(current_user()['id'] ?? 0)]);
+    }
     $id = (int)db()->lastInsertId();
-    crm_customer_log('business_card_save', 'customer_file', $id, $customerId, null, ['file_name'=>$name,'file_size'=>(int)(filesize($target) ?: 0)], '保存客户名片图片');
-    return ['id'=>$id,'file_name'=>$name,'file_size'=>(int)(filesize($target) ?: 0),'created_at'=>date('Y-m-d H:i:s')];
+    crm_customer_log('business_card_save', 'customer_file', $id, $customerId, null, ['file_name' => $name, 'file_size' => (int)(filesize($target) ?: 0), 'contact_id' => $contactId, 'side' => $side], '保存客户名片图片');
+    return ['id' => $id, 'file_name' => $name, 'file_size' => (int)(filesize($target) ?: 0), 'created_at' => date('Y-m-d H:i:s'), 'contact_id' => $contactId, 'side' => $side, 'category' => $category];
+}
+
+function crm_customer_business_card_store_pending_upload(array $file): string
+{
+    if (!function_exists('crm_customer_business_card_compress_upload')) {
+        throw new RuntimeException('名片处理模块未加载。');
+    }
+    crm_customer_business_card_compress_upload($file, 1024 * 1024);
+    return crm_customer_business_card_store_pending((string)($file['tmp_name'] ?? ''));
+}
+
+/** @param array<string,mixed> $contactInput */
+function crm_customer_attach_contact_business_cards(int $customerId, int $contactId, array $contactInput): void
+{
+    if ($customerId <= 0 || $contactId <= 0) return;
+    $front = trim((string)($contactInput['business_card_front_token'] ?? $contactInput['business_card_token'] ?? ''));
+    $back = trim((string)($contactInput['business_card_back_token'] ?? ''));
+    if ($front !== '') crm_customer_business_card_attach($customerId, $front, $contactId, 'front');
+    if ($back !== '') crm_customer_business_card_attach($customerId, $back, $contactId, 'back');
+}
+
+/** @return array{front:?array,back:?array,legacy:array<int,array<string,mixed>>} */
+function crm_contact_business_cards(int $contactId): array
+{
+    if ($contactId <= 0) return ['front' => null, 'back' => null, 'legacy' => []];
+    $cats = ['business_card_front', 'business_card_back', 'business_card'];
+    $in = implode(',', array_fill(0, count($cats), '?'));
+    $stmt = db()->prepare("SELECT f.id, f.customer_id, f.contact_id, f.file_name, f.file_type, f.file_size, f.category, f.created_at
+        FROM crm_customer_files f
+        WHERE f.contact_id = ? AND f.category IN ($in) AND f.deleted_at IS NULL
+        ORDER BY f.id DESC");
+    $stmt->execute(array_merge([$contactId], $cats));
+    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    $front = null;
+    $back = null;
+    $legacy = [];
+    foreach ($rows as $row) {
+        $cat = (string)($row['category'] ?? '');
+        if ($cat === 'business_card_front' && $front === null) $front = $row;
+        elseif ($cat === 'business_card_back' && $back === null) $back = $row;
+        elseif ($cat === 'business_card') $legacy[] = $row;
+    }
+    return ['front' => $front, 'back' => $back, 'legacy' => $legacy];
 }
 
 function crm_customer_business_cards(int $customerId): array
@@ -4075,7 +4136,7 @@ function crm_customer_business_cards(int $customerId): array
 
 function crm_customer_business_card_file(int $fileId): array
 {
-    $stmt = db()->prepare("SELECT * FROM crm_customer_files WHERE id=? AND category='business_card' AND deleted_at IS NULL LIMIT 1");
+    $stmt = db()->prepare("SELECT * FROM crm_customer_files WHERE id=? AND category IN ('business_card','business_card_front','business_card_back') AND deleted_at IS NULL LIMIT 1");
     $stmt->execute([$fileId]);
     $row = $stmt->fetch();
     if (!$row) throw new RuntimeException('名片图片不存在或已删除。');
@@ -5773,6 +5834,7 @@ function crm_contact_create(array $input, bool $skipPermission = false): array
         ->execute([$customerId, $data['name'], $data['name_en'], $data['position'], $data['department'], $data['email'], $data['phone'], $data['whatsapp'], $data['wechat'], $data['linkedin'], $data['gender'], $data['birthday'], $data['language'], $data['is_primary'], $data['is_left'], $data['prefer_personal_contact'], $data['avoid_group_contact'], $data['remark'], current_user()['id'], current_user()['id']]);
     $id = (int)db()->lastInsertId();
     crm_contact_apply_graph($id, $data['graph']);
+    crm_customer_attach_contact_business_cards($customerId, $id, $input);
     crm_customer_log('contact_create', 'contact', $id, $customerId, null, $data, '新建联系人');
     crm_customer_timeline_add($customerId, 'contact_create', '添加联系人', $data['name'], 'contact', (string)$id);
     return crm_customer_get($customerId);
@@ -5793,6 +5855,7 @@ function crm_contact_update(int $id, array $input, bool $skipPermission = false)
     crm_contact_apply_graph($id, $data['graph']);
     crm_customer_log('contact_update', 'contact', $id, (int)$before['customer_id'], $before, $data, '编辑联系人');
     crm_customer_timeline_add((int)$before['customer_id'], 'contact_update', '编辑联系人', $data['name'], 'contact', (string)$id);
+    crm_customer_attach_contact_business_cards((int)$before['customer_id'], $id, $input);
     return crm_customer_get((int)$before['customer_id']);
 }
 

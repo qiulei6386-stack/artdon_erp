@@ -4307,7 +4307,11 @@
         return '<tr data-detail-row="followup" data-detail-row-id="' + esc(f.id) + '"><td>' + esc(f.followup_time || '-') + '</td><td>' + esc(f.creator_name || f.owner_name || '-') + '</td><td>' + esc(f.contact_name || '-') + '</td><td>' + esc(f.followup_type || '-') + '</td><td title="' + esc(f.content || '') + '">' + esc(f.content || '-') + '</td><td>' + esc(f.next_remind_time || '-') + '</td><td>' + esc(cnStatus(f.status || 'open')) + '</td></tr>';
       }).join('') || '<tr><td colspan="7">暂无跟进</td></tr>';
       var visitRecordKind = function (v) {
-        return String((v || {}).visit_category || '') === '跟进记录' ? '跟进' : ((v || {}).visit_type === 'customer_arrival' ? '来访' : '拜访');
+        if (String((v || {}).visit_category || '') === '跟进记录') return '跟进';
+        if ((v || {}).visit_type === 'customer_arrival') return '来访';
+        if ((v || {}).visit_type === 'video_meeting') return '视频会议';
+        if ((v || {}).visit_type === 'daily_followup') return '平时跟进';
+        return '拜访';
       };
       var visits = (data.visits || []).map(function (v) {
         var type = visitRecordKind(v);
@@ -5008,7 +5012,7 @@
           rows.push({ type: '跟进', title: f.followup_type || '跟进', time: f.followup_time || '', detail: f.content || '', person: f.creator_name || '-', rowType: 'followup', rowId: f.id || f.followup_id || '' });
         });
         (data.visits || []).forEach(function (v) {
-          rows.push({ type: String(v.visit_category || '') === '跟进记录' ? '跟进' : (v.visit_type === 'customer_arrival' ? '来访' : '拜访'), title: v.title || '拜访 / 来访', time: v.visit_date || '', detail: v.status || v.result_summary || v.content || '', person: v.owner_name || '-', rowType: 'visit', rowId: v.id || v.visit_id || '' });
+          rows.push({ type: (function () { if (String(v.visit_category || '') === '跟进记录') return '跟进'; if (v.visit_type === 'customer_arrival') return '来访'; if (v.visit_type === 'video_meeting') return '视频会议'; if (v.visit_type === 'daily_followup') return '平时跟进'; return '拜访'; }()), title: v.title || '拜访 / 来访', time: v.visit_date || '', detail: v.status || v.result_summary || v.content || '', person: v.owner_name || '-', rowType: 'visit', rowId: v.id || v.visit_id || '' });
         });
         (data.mail_rows || []).forEach(function (m) {
           rows.push({ type: '邮件', title: m.subject || '(无主题)', time: m.received_at || m.sent_at || m.created_at || '', detail: m.direction || m.status || '', person: m.from_name || m.from_email || '-', rowType: 'mail', rowId: m.id || m.message_id || m.mail_id || '' });
@@ -29279,7 +29283,7 @@
       this.renderDetail(null, '拜访报表');
     },
     visitCard: function (row) {
-      var type = String(row.visit_category || '') === '跟进记录' ? '跟进' : (row.visit_type === 'customer_arrival' ? '来访' : '拜访');
+      var type = (function () { if (String(row.visit_category || '') === '跟进记录') return '跟进'; if (row.visit_type === 'customer_arrival') return '来访'; if (row.visit_type === 'video_meeting') return '视频会议'; if (row.visit_type === 'daily_followup') return '平时跟进'; return '拜访'; }());
       var need = [];
       if (Number(row.need_quote)) need.push('报价'); if (Number(row.need_material)) need.push('资料'); if (Number(row.need_sample)) need.push('样品'); if (Number(row.need_dispatch)) need.push('派工');
       var files = [];
@@ -29353,7 +29357,7 @@
         box.innerHTML = '<div class="visit-detail-empty"><strong>' + esc(emptyTitle || '拜访属性') + '</strong><span>请选择左侧一条拜访 / 来访记录。</span></div>';
         return;
       }
-      var type = String(row.visit_category || '') === '跟进记录' ? '跟进' : (row.visit_type === 'customer_arrival' ? '来访' : '拜访');
+      var type = (function () { if (String(row.visit_category || '') === '跟进记录') return '跟进'; if (row.visit_type === 'customer_arrival') return '来访'; if (row.visit_type === 'video_meeting') return '视频会议'; if (row.visit_type === 'daily_followup') return '平时跟进'; return '拜访'; }());
       var needs = [];
       if (Number(row.need_quote)) needs.push('报价');
       if (Number(row.need_material)) needs.push('资料');

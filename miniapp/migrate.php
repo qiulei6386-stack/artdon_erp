@@ -46,4 +46,20 @@ foreach ($tables as $t => $sql) {
     if (!tableExists($pdo, $t)) { $pdo->exec($sql); echo "created table $t\n"; }
     else echo "table $t exists\n";
 }
+
+// CRM / 小程序跟进扩展（幂等 ALTER，与 includes/crm_visit_miniapp.php 一致）
+$alters = [
+    "ALTER TABLE crm_visit_records ADD COLUMN background_check_note TEXT NULL",
+    "ALTER TABLE crm_visit_files ADD COLUMN file_role VARCHAR(40) NOT NULL DEFAULT ''",
+    "ALTER TABLE crm_customer_files ADD COLUMN contact_id INT UNSIGNED NULL",
+    "ALTER TABLE miniapp_visit_meta ADD COLUMN communication_content TEXT NULL",
+    "ALTER TABLE miniapp_visit_meta ADD COLUMN followup_progress TEXT NULL",
+    "ALTER TABLE miniapp_visit_meta ADD COLUMN participant_names VARCHAR(500) NOT NULL DEFAULT ''",
+    "ALTER TABLE miniapp_visit_meta ADD COLUMN participant_count INT NOT NULL DEFAULT 0",
+    "ALTER TABLE miniapp_visit_meta ADD COLUMN extra_json JSON NULL",
+];
+foreach ($alters as $sql) {
+    try { $pdo->exec($sql); echo "alter ok: $sql\n"; } catch (Throwable $e) { echo "alter skip: {$e->getMessage()}\n"; }
+}
+
 echo "MIGRATION DONE\n";
