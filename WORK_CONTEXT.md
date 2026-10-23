@@ -6,7 +6,7 @@
 - 修改文件：`miniapp/api/index.php`、`includes/crm_visit_miniapp.php`、`crm_visit.php`、`crm_customer.php`、`miniapp/migrate.php`、`assets/crm/crm.js`、`tools/ci_php_checks.sh`、`tests/miniapp_card_followup_contract.php`、`docs/miniapp-api-card-followup.md`、本文件。
 - 检查结果：`php -l miniapp/api/index.php` 及 touched CRM PHP 通过；`php tests/miniapp_card_followup_contract.php` 通过。云环境无 MySQL PDO，未做 live OCR/写库 E2E。
 - 服务器部署情况：本环境未部署。合并分支后快进 `artdon_erp` 与 `miniapp/api` 至 `/www/wwwroot/Artdon/`，执行 `php miniapp/migrate.php`。
-- Git 提交号及推送状态：见分支 `cursor/miniapp-card-followup-api-15dd`（待推送/PR）。
+- Git 提交号及推送状态：`78458c0` 分支 `cursor/miniapp-card-followup-api-15dd`（推送后更新）。
 - 尚未完成：合并后在生产库跑 migrate；用体验版小程序走通名片双面、视频会议/平时跟进保存与三类附件上传。
 
 ## 2026-10-22：易飞镜像新加坡 Feed API（芯片/驱动/电源）
