@@ -200,7 +200,7 @@ function mx_user_public(array $u): array {
 }
 
 /** Write miniapp audit row; keep 7 days. Never throws to callers. */
-function mx_audit_log(string $actionKey, string $actionLabel, string $targetType = '', int $targetId = 0, string $targetName = '', string $detail = '', ?int $userId = null, string $userName = ''): void {
+function mx_audit_log(string $actionKey, string $actionLabel, string $targetType = '', int $targetId = 0, string $targetName = '', string $detail = '', ?int $userId = null, string $userName = ''): bool {
     try {
         static $cleaned = false;
         if (!$cleaned) {
@@ -215,7 +215,7 @@ function mx_audit_log(string $actionKey, string $actionLabel, string $targetType
             $name = (string)($st->fetchColumn() ?: '');
         }
         $ip = function_exists('client_ip') ? (string)client_ip() : (string)($_SERVER['REMOTE_ADDR'] ?? '');
-        db()->prepare("INSERT INTO miniapp_audit_logs (user_id, user_name, action_key, action_label, target_type, target_id, target_name, detail, ip, created_at) VALUES (?,?,?,?,?,?,?,?,?,NOW())")
+        $written = db()->prepare("INSERT INTO miniapp_audit_logs (user_id, user_name, action_key, action_label, target_type, target_id, target_name, detail, ip, created_at) VALUES (?,?,?,?,?,?,?,?,?,NOW())")
             ->execute([
                 $uid,
                 mb_substr($name, 0, 64),
@@ -227,8 +227,10 @@ function mx_audit_log(string $actionKey, string $actionLabel, string $targetType
                 mb_substr($detail, 0, 500),
                 mb_substr($ip, 0, 64),
             ]);
+        return $written;
     } catch (Throwable $e) {
         // ignore logging failures
+        return false;
     }
 }
 
@@ -2076,6 +2078,12 @@ function mx_translate_zh_en(array $texts): array {
 }
 
     switch ($action) {
+        // Native mini-program quotations: authenticated, read-only estimates only.
+        case 'quotation': {
+            $quotationAuth = mapi_auth($input);
+            require __DIR__ . '/quotation.php';
+            break;
+        }
         // ===== 登录 =====
         case 'login': {
             $r = login_user(trim((string)($input['username'] ?? '')), (string)($input['password'] ?? ''));
