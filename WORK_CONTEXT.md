@@ -6,8 +6,17 @@
 - 修改文件：`includes/crm_visit_followup_log.php`（新）、`includes/crm_visit_miniapp.php`、`crm_visit.php`、`miniapp/api/index.php`、`miniapp/migrate.php`、`docs/miniapp-api-card-followup.md`、`tests/miniapp_visit_child_followup_contract.php`、`tools/ci_php_checks.sh`、本文件。
 - 检查结果：`php -l` 通过上述 PHP；`php tests/miniapp_visit_child_followup_contract.php`、`php tests/miniapp_card_followup_contract.php` 通过。云环境无 MySQL，未做带 token 写库 E2E。
 - 服务器部署情况：按任务要求**不部署**生产。合并 `main` 后执行 `php miniapp/migrate.php`，并同步 `miniapp/api/` 与 `artdon_erp` 至既有路径。
-- Git 提交号及推送状态：见分支 `cursor/visit-followup-timeline-5706`（推送后更新）。
+- Git 提交号及推送状态：见分支 `cursor/visit-followup-timeline-5706`（已合入 `main`）。
 - 尚未完成：合并后在体验版对一条拜访/来访走通子跟进新建、多图、列表与详情时间线；确认并列「跟进记录」Tab 行为未变。
+
+## 2026-10-24：小程序报价试算自定义倍率与佣金拆分
+
+- 本次完成：同步 yada-crm-miniprogram PR#9 公式至 `miniapp/api/quotation.php`、`quotation_calculation.php`：`level_id: null` + `custom_multiplier` 自定义报价等级；`commission`（enabled/mode/value/order_list_amount）在对外 `unit_price`/`amount` 不变前提下拆出 `list_*`、`commission_*`、`net_*` 字段（佣金从售价内扣）。新增 `tests/miniapp_quotation_calculation_contract.php` 并登记 CI。
+- 修改文件：`miniapp/api/quotation.php`、`miniapp/api/quotation_calculation.php`、`tests/miniapp_quotation_calculation_contract.php`、`tools/ci_php_checks.sh`、本文件。
+- 检查结果：`php -l` 通过上述 PHP；`php tests/miniapp_quotation_calculation_contract.php` 通过。云环境无 MySQL，未做带 token 的 live 试算 E2E。
+- 服务器部署情况：本环境未部署。合并 `main` 后需将 `/www/wwwroot/Artdon/miniapp/api/` 与 GitHub 同一提交对齐（与 artdon_erp 部署流程一致）。
+- Git 提交号及推送状态：见分支 `cursor/miniapp-quotation-commission-2534`（已与 `main` 含 #46 子跟进合并解决 `WORK_CONTEXT.md`、`ci_php_checks.sh` 冲突）。
+- 尚未完成：合并后在体验版验证自定义倍率与佣金字段展示；私有小程序仓库 PR#9 源码未能从本环境拉取，实现按任务摘要与 `qm_calculate` 取整对齐。
 
 ## 2026-10-23：小程序报价试算 API 热修入库
 
