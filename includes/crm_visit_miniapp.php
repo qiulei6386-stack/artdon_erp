@@ -28,6 +28,7 @@ function crm_visit_photo_category_to_file_role(string $photoCategory): string
         'communication' => 'communication',
         'progress' => 'progress',
         'background_check' => 'background_check',
+        'visit_followup' => 'visit_followup',
     ];
     return $map[$photoCategory] ?? '';
 }
@@ -37,6 +38,9 @@ function crm_visit_file_role_to_photo_category(string $fileRole): string
     $fileRole = trim($fileRole);
     if ($fileRole === 'followup_progress') {
         return 'progress';
+    }
+    if ($fileRole === 'visit_followup') {
+        return 'visit_followup';
     }
     if (in_array($fileRole, ['communication', 'progress', 'background_check'], true)) {
         return $fileRole;
@@ -73,6 +77,10 @@ function crm_visit_miniapp_meta_ensure(): void
     crm_visit_add_column('crm_visit_records', 'background_check_note', 'background_check_note TEXT NULL AFTER preparation_note');
     crm_visit_add_column('crm_visit_files', 'file_role', "file_role VARCHAR(40) NOT NULL DEFAULT '' AFTER file_kind");
     crm_visit_add_column('crm_visit_files', 'photo_category', "photo_category VARCHAR(40) NOT NULL DEFAULT '' AFTER file_role");
+    crm_visit_add_column('crm_visit_files', 'followup_log_id', 'followup_log_id INT UNSIGNED NULL AFTER visit_id');
+    if (function_exists('crm_visit_followup_log_ensure')) {
+        crm_visit_followup_log_ensure();
+    }
     db()->exec("CREATE TABLE IF NOT EXISTS miniapp_visit_meta (
         visit_id INT PRIMARY KEY, start_time TIME NULL, end_time TIME NULL, notes TEXT NULL,
         is_demo TINYINT(1) NOT NULL DEFAULT 0, updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
