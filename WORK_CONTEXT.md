@@ -1,5 +1,14 @@
 # Artdon ERP 工作上下文
 
+## 2026-10-24：小程序派工列表折叠 recurring/fixed 子任务
+
+- 本次完成：`miniapp/api/index.php` 的 `dispatch_list`（派工 kind）与网站 `dn_list` 对齐：对 `parent_group_id>0` 的 recurring/multi 子任务只保留每组一条代表行（优先当天 `task_date`，否则最近未来开放日，再否则最早开放日；`done`/`cancelled` 按完成/取消时间取最新）。`COUNT` 与分页在折叠后统计。响应补充 `dispatch_mode`、`parent_group_id`。逻辑模块 `includes/dispatch_miniapp_list.php`；契约 `tests/miniapp_dispatch_list_fold_contract.php`。
+- 修改文件：`includes/dispatch_miniapp_list.php`（新）、`miniapp/api/index.php`、`tests/miniapp_dispatch_list_fold_contract.php`、`tools/ci_php_checks.sh`、本文件。
+- 检查结果：`php -l` 通过上述 PHP；`php tests/miniapp_dispatch_list_fold_contract.php` 通过。云环境无 MySQL，未做带 token 的 live `dispatch_list` E2E。
+- 服务器部署情况：本环境未部署。合并 `main` 后同步 GitHub 同一提交至 `/www/wwwroot/Artdon/artdon_erp/includes/dispatch_miniapp_list.php` 与 `/www/wwwroot/Artdon/miniapp/api/index.php`。
+- Git 提交号及推送状态：见分支 `cursor/miniapp-dispatch-list-fold-bb94`。
+- 尚未完成：合并后用用户 江景芳（user_id=6）体验版确认派工待办 open 总数不再出现同一标题数十条重复。
+
 ## 2026-10-24：拜访详情 followup_records 无限递归热修入库
 
 - 本次完成：修复 `action=visit` 详情超时（PHP slow.log：`crm_visit_row` ↔ `crm_visit_followup_logs_for_parent` 互调）。`includes/crm_visit_followup_log.php` 新增 `crm_visit_followup_log_parent_context`（`SELECT id, visit_type, visit_category` + 范围 SQL），列表/保存/上传父单校验均不再调用 `crm_visit_row`。契约测试增加防递归断言。
