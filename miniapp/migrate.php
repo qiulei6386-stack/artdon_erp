@@ -62,4 +62,29 @@ foreach ($alters as $sql) {
     try { $pdo->exec($sql); echo "alter ok: $sql\n"; } catch (Throwable $e) { echo "alter skip: {$e->getMessage()}\n"; }
 }
 
+$followupTable = "CREATE TABLE IF NOT EXISTS visit_followup_logs (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  parent_visit_id INT UNSIGNED NOT NULL,
+  follow_date DATE NOT NULL,
+  content TEXT NOT NULL,
+  created_by INT UNSIGNED NOT NULL DEFAULT 0,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  deleted_at DATETIME NULL,
+  KEY idx_parent_follow_date (parent_visit_id, follow_date, id),
+  KEY idx_created_by (created_by)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
+try {
+    $pdo->exec($followupTable);
+    echo "table visit_followup_logs ok\n";
+} catch (Throwable $e) {
+    echo "visit_followup_logs skip: {$e->getMessage()}\n";
+}
+try {
+    $pdo->exec('ALTER TABLE crm_visit_files ADD COLUMN followup_log_id INT UNSIGNED NULL AFTER visit_id');
+    echo "alter ok: crm_visit_files.followup_log_id\n";
+} catch (Throwable $e) {
+    echo "alter skip followup_log_id: {$e->getMessage()}\n";
+}
+
 echo "MIGRATION DONE\n";

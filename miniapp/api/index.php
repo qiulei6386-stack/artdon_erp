@@ -11,6 +11,7 @@ require __DIR__ . '/../../artdon_erp/crm_auth.php';
 require __DIR__ . '/../../artdon_erp/crm_log.php';
 require __DIR__ . '/../../artdon_erp/crm_visit.php';
 require_once __DIR__ . '/../../artdon_erp/includes/crm_visit_miniapp.php';
+require_once __DIR__ . '/../../artdon_erp/includes/crm_visit_followup_log.php';
 
 
 /** Visit.country (general_ci) vs customer.country (unicode_ci) — unify to avoid Illegal mix of collations. */
@@ -356,6 +357,7 @@ function mx_compress_upload_under_1mb(array &$file): bool {
 function mx_ensure(): void {
     static $done = false; if ($done) return; $done = true;
     if (function_exists('crm_visit_miniapp_meta_ensure')) crm_visit_miniapp_meta_ensure();
+    if (function_exists('crm_visit_followup_log_ensure')) crm_visit_followup_log_ensure();
     db()->exec("CREATE TABLE IF NOT EXISTS miniapp_visit_meta (
         visit_id INT PRIMARY KEY, start_time TIME NULL, end_time TIME NULL, notes TEXT NULL,
         is_demo TINYINT(1) NOT NULL DEFAULT 0, updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
@@ -454,6 +456,25 @@ function mx_card_ocr_enabled(array $input): bool {
     if (in_array($raw, [0, '0', false], true)) return false;
     if (in_array($raw, ['false', 'no', 'off'], true)) return false;
     return true;
+}
+
+function mx_visit_followup_records_public(int $parentVisitId): array {
+    if (!function_exists('crm_visit_followup_logs_for_parent')) {
+        return [];
+    }
+    $rows = crm_visit_followup_logs_for_parent($parentVisitId);
+    foreach ($rows as &$r) {
+        foreach ($r['attachments'] as &$a) {
+            $fid = (int)($a['id'] ?? 0);
+            $a['url'] = $fid > 0 ? mx_visit_file_url($fid) : '';
+            if ($fid > 0 && mx_file_is_image($a)) {
+                $a['photo_url'] = mx_photo_url($fid);
+            }
+        }
+        unset($a);
+    }
+    unset($r);
+    return $rows;
 }
 
 function mx_visit_upload_with_photo_category(int $visitId, array $file, string $photoCategory): array {
@@ -1130,6 +1151,9 @@ function mx_visit_list_args(array $input, array $base): array {
 
 function mx_visit_extra(array $row): array {
     $id = (int)$row['id'];
+    if (function_exists('crm_visit_files_exclude_followup_logs')) {
+        $row['files'] = crm_visit_files_exclude_followup_logs((array)($row['files'] ?? []));
+    }
     $st = db()->prepare("SELECT * FROM miniapp_visit_meta WHERE visit_id=?"); $st->execute([$id]);
     $meta = $st->fetch(PDO::FETCH_ASSOC) ?: [];
     $s = mx_hm($meta['start_time'] ?? $row['visit_time'] ?? ''); $e = mx_hm($meta['end_time'] ?? '');
@@ -1222,6 +1246,9 @@ function mx_visit_extra(array $row): array {
     $kind = mx_visit_kind($row);
     $row['record_kind'] = $kind['record_kind'];
     $row['type_label'] = $kind['type_label'];
+    $row['followup_records'] = mx_visit_followup_records_public($id);
+    $row['supports_child_followup_logs'] = function_exists('crm_visit_supports_child_followup_logs')
+        && crm_visit_supports_child_followup_logs($row);
     unset($row['result_history']);
     return $row;
 }
@@ -2573,6 +2600,94 @@ function mx_translate_zh_en(array $texts): array {
             $r = mx_visit_upload_with_photo_category($id, $_FILES['file'], $cat);
             mx_audit_log('visit_attachment_upload', '上传跟进附件', 'visit', $id, mx_audit_visit_name($id), $cat);
             mapi_out(true, '附件上传成功', $r);
+            break;
+        }
+
+        case 'visit_followup_list': {
+            mapi_auth($input);
+            mx_ensure();
+            $visitId = (int)($input['visit_id'] ?? $input['parent_visit_id'] ?? 0);
+            if ($visitId <= 0) mapi_out(false, '参数错误');
+            crm_visit_row($visitId);
+            mapi_out(true, '', ['visit_id' => $visitId, 'followup_records' => mx_visit_followup_records_public($visitId)]);
+            break;
+        }
+
+        case 'visit_followup_save': {
+            $me = mapi_auth($input);
+            mx_ensure();
+            $visitId = (int)($input['visit_id'] ?? $input['parent_visit_id'] ?? 0);
+            try {
+                $payload = $input;
+                if ($visitId > 0) {
+                    $payload['parent_visit_id'] = $visitId;
+                }
+                $saved = crm_visit_followup_log_save($payload, (int)($me['user_id'] ?? 0));
+                foreach ($saved['attachments'] as &$a) {
+                    $fid = (int)($a['id'] ?? 0);
+                    $a['url'] = $fid > 0 ? mx_visit_file_url($fid) : '';
+                }
+                unset($a);
+                $pid = (int)($saved['parent_visit_id'] ?? $visitId);
+                $isEdit = (int)($input['id'] ?? $input['followup_id'] ?? 0) > 0;
+                mx_audit_log($isEdit ? 'visit_followup_edit' : 'visit_followup_create', $isEdit ? '编辑拜访跟进记录' : '新建拜访跟进记录', 'visit', $pid, mx_audit_visit_name($pid));
+                mapi_out(true, $isEdit ? '跟进记录已保存' : '跟进记录已创建', $saved);
+            } catch (Throwable $e) {
+                mapi_out(false, $e->getMessage());
+            }
+            break;
+        }
+
+        case 'visit_followup_delete': {
+            mapi_auth($input);
+            mx_ensure();
+            $fid = (int)($input['id'] ?? $input['followup_id'] ?? 0);
+            $visitId = (int)($input['visit_id'] ?? $input['parent_visit_id'] ?? 0);
+            if ($fid <= 0) mapi_out(false, '参数错误');
+            try {
+                $existing = crm_visit_followup_log_row($fid);
+                if (!$existing) {
+                    mapi_out(false, '跟进记录不存在');
+                }
+                if ($visitId > 0 && (int)$existing['parent_visit_id'] !== $visitId) {
+                    mapi_out(false, '跟进记录不存在');
+                }
+                $visitId = (int)$existing['parent_visit_id'];
+                crm_visit_followup_log_delete($fid, $visitId);
+                mx_audit_log('visit_followup_delete', '删除拜访跟进记录', 'visit', $visitId, mx_audit_visit_name($visitId));
+                mapi_out(true, '跟进记录已删除', ['id' => $fid]);
+            } catch (Throwable $e) {
+                mapi_out(false, $e->getMessage());
+            }
+            break;
+        }
+
+        case 'visit_followup_attachment_upload': {
+            mapi_auth($input);
+            mx_ensure();
+            $visitId = (int)($input['visit_id'] ?? $_POST['visit_id'] ?? $input['parent_visit_id'] ?? $_POST['parent_visit_id'] ?? 0);
+            $followupId = (int)($input['followup_id'] ?? $_POST['followup_id'] ?? $input['id'] ?? $_POST['id'] ?? 0);
+            if ($visitId <= 0 || $followupId <= 0) mapi_out(false, '参数错误');
+            if (empty($_FILES['file'])) mapi_out(false, '没有文件');
+            $file = $_FILES['file'];
+            $mime = strtolower((string)($file['type'] ?? ''));
+            if (strpos($mime, 'image/') === 0 && !mx_compress_upload_under_1mb($file)) {
+                $sz = (int)($file['size'] ?? 0);
+                if ($sz > 1048576) mapi_out(false, '图片过大，压缩后仍超过1MB，请换一张较小的图');
+            }
+            try {
+                $r = crm_visit_followup_log_upload_file($visitId, $followupId, $file);
+                $f = $r['file'] ?? [];
+                $fid = (int)($f['id'] ?? 0);
+                if ($fid > 0) {
+                    $f['url'] = mx_visit_file_url($fid);
+                    if (mx_file_is_image($f)) $f['photo_url'] = mx_photo_url($fid);
+                }
+                mx_audit_log('visit_followup_attachment_upload', '上传拜访跟进记录图片', 'visit', $visitId, mx_audit_visit_name($visitId), 'followup#' . $followupId);
+                mapi_out(true, '上传成功', ['file' => $f, 'uploaded' => $r['uploaded'] ?? []]);
+            } catch (Throwable $e) {
+                mapi_out(false, $e->getMessage());
+            }
             break;
         }
 

@@ -1,5 +1,14 @@
 # Artdon ERP 工作上下文
 
+## 2026-10-24：拜访/来访详情子跟进记录（小程序 API）
+
+- 本次完成：新增 `visit_followup_logs` 子表及 `crm_visit_files.followup_log_id`；模块 `includes/crm_visit_followup_log.php`。miniapp API：`visit_followup_list` / `visit_followup_save` / `visit_followup_delete` / `visit_followup_attachment_upload`；`visit` 详情返回 `followup_records[]`、`supports_child_followup_logs`。仅 `customer_visit` / `customer_arrival` 可挂子跟进；附件 `photo_category=visit_followup`。`crm_visit_row` 同步 `followup_records` 供网站 API；父单附件列表排除子跟进图。文档扩展 `docs/miniapp-api-card-followup.md` §5；`miniapp/migrate.php` 补表/列；契约 `tests/miniapp_visit_child_followup_contract.php`。
+- 修改文件：`includes/crm_visit_followup_log.php`（新）、`includes/crm_visit_miniapp.php`、`crm_visit.php`、`miniapp/api/index.php`、`miniapp/migrate.php`、`docs/miniapp-api-card-followup.md`、`tests/miniapp_visit_child_followup_contract.php`、`tools/ci_php_checks.sh`、本文件。
+- 检查结果：`php -l` 通过上述 PHP；`php tests/miniapp_visit_child_followup_contract.php`、`php tests/miniapp_card_followup_contract.php` 通过。云环境无 MySQL，未做带 token 写库 E2E。
+- 服务器部署情况：按任务要求**不部署**生产。合并 `main` 后执行 `php miniapp/migrate.php`，并同步 `miniapp/api/` 与 `artdon_erp` 至既有路径。
+- Git 提交号及推送状态：见分支 `cursor/visit-followup-timeline-5706`（推送后更新）。
+- 尚未完成：合并后在体验版对一条拜访/来访走通子跟进新建、多图、列表与详情时间线；确认并列「跟进记录」Tab 行为未变。
+
 ## 2026-10-23：小程序报价试算 API 热修入库
 
 - 本次完成：将生产已部署的报价试算后端补丁纳入仓库——新增 `miniapp/api/quotation.php`、`quotation_calculation.php`；`index.php` 注册 `case 'quotation'`（`mapi_auth` + require）；`mx_audit_log` 返回 `bool` 供试算审计写入结果判断。
