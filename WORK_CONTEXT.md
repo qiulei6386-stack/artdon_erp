@@ -1,5 +1,14 @@
 # Artdon ERP 工作上下文
 
+## 2026-10-24：小程序报价试算自定义倍率与佣金拆分
+
+- 本次完成：同步 yada-crm-miniprogram PR#9 公式至 `miniapp/api/quotation.php`、`quotation_calculation.php`：`level_id: null` + `custom_multiplier` 自定义报价等级；`commission`（enabled/mode/value/order_list_amount）在对外 `unit_price`/`amount` 不变前提下拆出 `list_*`、`commission_*`、`net_*` 字段（佣金从售价内扣）。新增 `tests/miniapp_quotation_calculation_contract.php` 并登记 CI。
+- 修改文件：`miniapp/api/quotation.php`、`miniapp/api/quotation_calculation.php`、`tests/miniapp_quotation_calculation_contract.php`、`tools/ci_php_checks.sh`、本文件。
+- 检查结果：`php -l` 通过上述 PHP；`php tests/miniapp_quotation_calculation_contract.php` 通过。云环境无 MySQL，未做带 token 的 live 试算 E2E。
+- 服务器部署情况：本环境未部署。合并 `main` 后需将 `/www/wwwroot/Artdon/miniapp/api/` 与 GitHub 同一提交对齐（与 artdon_erp 部署流程一致）。
+- Git 提交号及推送状态：见分支 `cursor/miniapp-quotation-commission-2534`。
+- 尚未完成：合并后在体验版验证自定义倍率与佣金字段展示；私有小程序仓库 PR#9 源码未能从本环境拉取，实现按任务摘要与 `qm_calculate` 取整对齐。
+
 ## 2026-10-23：小程序报价试算 API 热修入库
 
 - 本次完成：将生产已部署的报价试算后端补丁纳入仓库——新增 `miniapp/api/quotation.php`、`quotation_calculation.php`；`index.php` 注册 `case 'quotation'`（`mapi_auth` + require）；`mx_audit_log` 返回 `bool` 供试算审计写入结果判断。

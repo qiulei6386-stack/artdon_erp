@@ -60,6 +60,69 @@ function mq_number($value, string $label): float {
     return (float)$value;
 }
 
+function mq_commission_enabled(?array $commission): bool {
+    if (!is_array($commission)) return false;
+    $enabled = $commission['enabled'] ?? false;
+    return $enabled === true || $enabled === 1 || $enabled === '1';
+}
+
+/** Split list / commission / net from the external sale price without changing unit_price or amount. */
+function mq_commission_money(array $sale, ?array $commission): array {
+    if (!function_exists('qm_calculate')) throw new RuntimeException('缺少网站统一金额计算库');
+    $qty = mq_number($sale['qty'] ?? 0, '报价数量');
+    if ($qty <= 0) throw new RuntimeException('报价数量必须大于零');
+    $currency = strtoupper(trim((string)($sale['currency'] ?? '')));
+    if ($currency === 'CNY' || $currency === '人民币') $currency = 'RMB';
+    if (!in_array($currency, ['RMB', 'USD'], true)) throw new RuntimeException('试算币种无效');
+    $unitPrice = mq_number($sale['unit_price'] ?? 0, '对外单价');
+    $amount = mq_number($sale['amount'] ?? 0, '对外金额');
+    $listAmountInput = null;
+    if (is_array($commission) && array_key_exists('order_list_amount', $commission) && $commission['order_list_amount'] !== null && $commission['order_list_amount'] !== '') {
+        $listAmountInput = mq_number($commission['order_list_amount'], '订单清单金额');
+    }
+    if ($listAmountInput !== null && $listAmountInput > 0) {
+        $listUnit = round($listAmountInput / $qty, 4, PHP_ROUND_HALF_UP);
+        $listMoney = qm_calculate([['qty' => $qty, 'price' => $listUnit, 'currency' => $currency]], $currency);
+    } else {
+        $listMoney = qm_calculate([['qty' => $qty, 'price' => $unitPrice, 'currency' => $currency]], $currency);
+    }
+    $listUnitPrice = (float)$listMoney['items'][0]['price'];
+    $listAmount = (float)$listMoney['amount'];
+    $commissionUnitPrice = 0.0;
+    $commissionAmount = 0.0;
+    if (mq_commission_enabled($commission)) {
+        $mode = strtolower(trim((string)($commission['mode'] ?? '')));
+        $value = mq_number($commission['value'] ?? 0, '佣金数值');
+        if (!in_array($mode, ['percent', 'fixed', 'per_lamp'], true)) throw new RuntimeException('佣金模式无效');
+        if ($mode === 'percent') {
+            if ($value > 100) throw new RuntimeException('佣金百分比不能超过100');
+            $commissionUnitPrice = round($unitPrice * $value / 100, 4, PHP_ROUND_HALF_UP);
+            $commissionMoney = qm_calculate([['qty' => $qty, 'price' => $commissionUnitPrice, 'currency' => $currency]], $currency);
+            $commissionAmount = (float)$commissionMoney['amount'];
+            $commissionUnitPrice = (float)$commissionMoney['items'][0]['price'];
+        } elseif ($mode === 'per_lamp') {
+            $commissionUnitPrice = round($value, 4, PHP_ROUND_HALF_UP);
+            $commissionMoney = qm_calculate([['qty' => $qty, 'price' => $commissionUnitPrice, 'currency' => $currency]], $currency);
+            $commissionAmount = (float)$commissionMoney['amount'];
+            $commissionUnitPrice = (float)$commissionMoney['items'][0]['price'];
+        } else {
+            $commissionAmount = round($value, 2, PHP_ROUND_HALF_UP);
+            $commissionUnitPrice = $qty > 0 ? round($commissionAmount / $qty, 4, PHP_ROUND_HALF_UP) : 0.0;
+        }
+        if ($commissionAmount > $amount + 0.000001) throw new RuntimeException('佣金不能超过对外金额');
+    }
+    $netUnitPrice = round(max(0, $unitPrice - $commissionUnitPrice), 4, PHP_ROUND_HALF_UP);
+    $netMoney = qm_calculate([['qty' => $qty, 'price' => $netUnitPrice, 'currency' => $currency]], $currency);
+    return [
+        'list_unit_price' => $listUnitPrice,
+        'list_amount' => $listAmount,
+        'commission_unit_price' => $commissionUnitPrice,
+        'commission_amount' => $commissionAmount,
+        'net_unit_price' => (float)$netMoney['items'][0]['price'],
+        'net_amount' => (float)$netMoney['amount'],
+    ];
+}
+
 function mq_field_number(array $row, array $keys, string $label, bool $required = false): float {
     foreach ($keys as $key) {
         if (array_key_exists($key, $row)) return mq_number($row[$key], $label);
@@ -206,7 +269,7 @@ function mq_calculate(array $breakdown, array $config): array {
     if ($currency === 'USD') $formula .= ' ÷ '.number_format($rate, 6, '.', '');
     $notes = $breakdown['review_notes'] ?? [];
     $warning = is_array($notes) ? implode('；', array_map('strval', $notes)) : '';
-    return [
+    $result = [
         'mode'=>$mode, 'shell_cost_rmb'=>round($shell, 4, PHP_ROUND_HALF_UP),
         'led_cost_rmb'=>round($partCosts['led'], 4, PHP_ROUND_HALF_UP), 'driver_cost_rmb'=>round($partCosts['driver'], 4, PHP_ROUND_HALF_UP),
         'cost_rmb'=>round($cost, 4, PHP_ROUND_HALF_UP), 'multiplier'=>$multiplier,
@@ -217,4 +280,8 @@ function mq_calculate(array $breakdown, array $config): array {
         'warning'=>$warning, 'review_confirmed'=>$breakdown['needs_review'] && ($config['review_confirmed'] ?? null) === true,
         'money'=>$money
     ];
+    $commission = $config['commission'] ?? null;
+    return $result + mq_commission_money([
+        'qty'=>$result['qty'], 'unit_price'=>$result['unit_price'], 'amount'=>$result['amount'], 'currency'=>$result['currency'],
+    ], is_array($commission) ? $commission : null);
 }

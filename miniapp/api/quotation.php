@@ -699,14 +699,45 @@ function mq_api_quote_customer(PDO $pdo, array $input): array {
     return ['id'=>null, 'name'=>mq_api_text($input['customer_name'] ?? '', '报价对象', 200), 'code'=>'', 'manual'=>true];
 }
 
+function mq_api_price_level(array $meta, array $input): array {
+    $hasLevelKey = array_key_exists('level_id', $input);
+    $levelId = $input['level_id'] ?? null;
+    if ($hasLevelKey && $levelId === null) {
+        $custom = $input['custom_multiplier'] ?? null;
+        if ($custom === null || $custom === '') throw new MqReadError('请填写自定义报价倍率');
+        $multiplier = mq_api_numeric($custom, '自定义报价倍率');
+        if ($multiplier <= 0) throw new MqReadError('自定义报价倍率必须大于零');
+        return ['id' => null, 'name' => '自定义倍率', 'multiplier' => $multiplier, 'is_default' => 0];
+    }
+    if ($levelId !== null && $levelId !== '') {
+        $id = mq_api_id($levelId, '报价等级');
+        foreach ($meta['levels'] as $candidate) if ($candidate['id'] === $id) return $candidate;
+        throw new MqReadError('网站报价等级已停用或变化，请重新选择');
+    }
+    foreach ($meta['levels'] as $candidate) if ($candidate['is_default']) return $candidate;
+    return $meta['levels'][0];
+}
+
+function mq_api_commission_input(array $input): ?array {
+    if (!array_key_exists('commission', $input) || $input['commission'] === null) return null;
+    if (!is_array($input['commission'])) throw new MqReadError('佣金参数格式不正确');
+    return $input['commission'];
+}
+
 function mq_api_calculation_audit(array $result, array $customer): string {
     $clean = static fn($value): string => trim(preg_replace('/[\x00-\x1F\x7F]/u', ' ', (string)$value));
     $parts = ['客户：' . ($clean($customer['name']) ?: '未填写') . ($customer['manual'] ? '（手填）' : ' #' . $customer['id'] . ($customer['code'] !== '' ? ' / ' . $clean($customer['code']) : ''))];
     $parts[] = '配置：' . (['shell'=>'空壳','led'=>'灯具+芯片','full'=>'灯具+芯片+电源'][$result['mode']] ?? '');
     $parts[] = '数量：' . $result['qty'];
-    $parts[] = '等级：' . $clean($result['price_level']['name'] ?? '') . ' ×' . ($result['multiplier'] ?? '');
+    $levelLabel = $clean($result['price_level']['name'] ?? '');
+    if (($result['price_level']['id'] ?? null) === null && $levelLabel === '自定义倍率') $levelLabel = '自定义倍率';
+    $parts[] = '等级：' . $levelLabel . ' ×' . ($result['multiplier'] ?? '');
     $parts[] = '单价：' . $result['currency'] . ' ' . number_format((float)$result['unit_price'],4,'.','');
     $parts[] = '金额：' . $result['currency'] . ' ' . number_format((float)$result['amount'],2,'.','');
+    if ((float)($result['commission_amount'] ?? 0) > 0) {
+        $parts[] = '佣金：' . $result['currency'] . ' ' . number_format((float)$result['commission_amount'],2,'.','');
+        $parts[] = '净额：' . $result['currency'] . ' ' . number_format((float)$result['net_amount'],2,'.','');
+    }
     $parts[] = $clean($result['version_label']);
     if (($result['price_source'] ?? '') === 'original_tier') $parts[] = '按网站阶梯价';
     return mb_substr(implode('；', $parts),0,500);
@@ -720,17 +751,10 @@ function mq_api_calculate(PDO $pdo, array $input): array {
     $mode = mq_api_text($input['mode'] ?? '', '组合方式', 10);
     if (!in_array($mode, ['shell', 'led', 'full'], true)) throw new MqReadError('请选择空壳、灯具加芯片或灯具加芯片电源');
     $meta = mq_api_meta($pdo);
-    $levelId = $input['level_id'] ?? null; $level = null;
-    if ($levelId !== null && $levelId !== '') {
-        $id = mq_api_id($levelId, '报价等级');
-        foreach ($meta['levels'] as $candidate) if ($candidate['id'] === $id) { $level = $candidate; break; }
-        if ($level === null) throw new MqReadError('网站报价等级已停用或变化，请重新选择');
-    } else {
-        foreach ($meta['levels'] as $candidate) if ($candidate['is_default']) { $level = $candidate; break; }
-        $level = $level ?? $meta['levels'][0];
-    }
+    $level = mq_api_price_level($meta, $input);
     $config = ['mode'=>$mode, 'level'=>$level, 'currency'=>mq_api_text($input['currency'] ?? 'RMB', '币种', 3),
-        'exchange_rate'=>$meta['exchange_rate_usd'], 'qty'=>$input['qty'] ?? null, 'review_confirmed'=>($input['review_confirmed'] ?? null) === true];
+        'exchange_rate'=>$meta['exchange_rate_usd'], 'qty'=>$input['qty'] ?? null, 'review_confirmed'=>($input['review_confirmed'] ?? null) === true,
+        'commission'=>mq_api_commission_input($input)];
     if ($mode !== 'shell') $config['led'] = mq_api_material($pdo, $input['led_id'] ?? '', 'led', $input['led_qty'] ?? null);
     if ($mode === 'full') $config['driver'] = mq_api_material($pdo, $input['driver_id'] ?? '', 'driver', $input['driver_qty'] ?? null);
     try { $result = mq_calculate($loaded['breakdown'], $config); }
@@ -755,6 +779,9 @@ function mq_api_calculate(PDO $pdo, array $input): array {
     }
     if ($tier !== null && $tier['warning'] !== '') $warnings[] = $tier['warning'];
     $result['warning'] = implode('；', array_unique($warnings));
+    $result = array_merge($result, mq_commission_money([
+        'qty'=>$result['qty'], 'unit_price'=>$result['unit_price'], 'amount'=>$result['amount'], 'currency'=>$result['currency'],
+    ], $config['commission'] ?? null));
     $result['version_label'] = $bom['version_label'];
     $result['model'] = $bom['model'];
     $result['led_name'] = isset($config['led']) ? trim($config['led']['brand'] . ' ' . $config['led']['name'] . ' ' . $config['led']['model']) : '';
