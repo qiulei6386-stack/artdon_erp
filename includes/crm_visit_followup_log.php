@@ -44,6 +44,20 @@ function crm_visit_supports_child_followup_logs(array $row): bool
     return in_array($type, ['customer_visit', 'customer_arrival'], true);
 }
 
+/** Parent existence + type for follow-up APIs; must not call crm_visit_row (recursion). */
+function crm_visit_followup_log_parent_context(int $parentVisitId): ?array
+{
+    if ($parentVisitId <= 0 || !function_exists('crm_visit_ensure_tables') || !function_exists('crm_visit_scope_sql')) {
+        return null;
+    }
+    crm_visit_ensure_tables();
+    $st = db()->prepare('SELECT v.id, v.visit_type, v.visit_category FROM crm_visit_records v
+        WHERE v.id = ? AND v.deleted_at IS NULL AND ' . crm_visit_scope_sql('v') . ' LIMIT 1');
+    $st->execute([$parentVisitId]);
+    $row = $st->fetch(PDO::FETCH_ASSOC);
+    return $row ?: null;
+}
+
 function crm_visit_followup_log_row(int $id): ?array
 {
     crm_visit_followup_log_ensure();
@@ -66,8 +80,8 @@ function crm_visit_followup_logs_for_parent(int $parentVisitId): array
     if ($parentVisitId <= 0) {
         return [];
     }
-    $parent = crm_visit_row($parentVisitId);
-    if (!crm_visit_supports_child_followup_logs($parent)) {
+    $parent = crm_visit_followup_log_parent_context($parentVisitId);
+    if (!$parent || !crm_visit_supports_child_followup_logs($parent)) {
         return [];
     }
     $t = crm_visit_followup_log_table();
@@ -134,8 +148,8 @@ function crm_visit_followup_log_save(array $input, int $userId): array
     if ($parentId <= 0) {
         throw new RuntimeException('缺少拜访单 visit_id');
     }
-    $parent = crm_visit_row($parentId);
-    if (!crm_visit_supports_child_followup_logs($parent)) {
+    $parent = crm_visit_followup_log_parent_context($parentId);
+    if (!$parent || !crm_visit_supports_child_followup_logs($parent)) {
         throw new RuntimeException('仅拜访或来访详情可添加跟进记录');
     }
     $followDate = trim((string)($input['follow_date'] ?? ''));
@@ -192,7 +206,9 @@ function crm_visit_followup_log_upload_file(int $parentVisitId, int $followupLog
     if (!$row || (int)$row['parent_visit_id'] !== $parentVisitId) {
         throw new RuntimeException('跟进记录不存在');
     }
-    crm_visit_row($parentVisitId);
+    if (!crm_visit_followup_log_parent_context($parentVisitId)) {
+        throw new RuntimeException('拜访/来访记录不存在或无权查看。');
+    }
     if (!function_exists('crm_visit_column_exists') || !crm_visit_column_exists('crm_visit_files', 'followup_log_id')) {
         throw new RuntimeException('附件列未就绪，请执行 php miniapp/migrate.php');
     }

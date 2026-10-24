@@ -1,5 +1,14 @@
 # Artdon ERP 工作上下文
 
+## 2026-10-24：拜访详情 followup_records 无限递归热修入库
+
+- 本次完成：修复 `action=visit` 详情超时（PHP slow.log：`crm_visit_row` ↔ `crm_visit_followup_logs_for_parent` 互调）。`includes/crm_visit_followup_log.php` 新增 `crm_visit_followup_log_parent_context`（`SELECT id, visit_type, visit_category` + 范围 SQL），列表/保存/上传父单校验均不再调用 `crm_visit_row`。契约测试增加防递归断言。
+- 修改文件：`includes/crm_visit_followup_log.php`、`tests/miniapp_visit_child_followup_contract.php`、本文件。
+- 检查结果：`php -l` 通过上述 PHP；`php tests/miniapp_visit_child_followup_contract.php` 通过。云环境无 MySQL，未做带 token 的 live `action=visit` E2E（生产已热修验证 id=47 ~0.19s）。
+- 服务器部署情况：本环境未部署。合并 `main` 后请将 GitHub 同一提交同步至 `/www/wwwroot/Artdon/artdon_erp/includes/crm_visit_followup_log.php`（生产已于 2026-10-24 先行热修，合并后核对三方提交一致即可）。
+- Git 提交号及推送状态：见分支 `cursor/visit-followup-recursion-fix-4390`。
+- 尚未完成：合并后在体验版随机打开拜访/来访详情确认子跟进时间线仍正常。
+
 ## 2026-10-24：拜访/来访详情子跟进记录（小程序 API）
 
 - 本次完成：新增 `visit_followup_logs` 子表及 `crm_visit_files.followup_log_id`；模块 `includes/crm_visit_followup_log.php`。miniapp API：`visit_followup_list` / `visit_followup_save` / `visit_followup_delete` / `visit_followup_attachment_upload`；`visit` 详情返回 `followup_records[]`、`supports_child_followup_logs`。仅 `customer_visit` / `customer_arrival` 可挂子跟进；附件 `photo_category=visit_followup`。`crm_visit_row` 同步 `followup_records` 供网站 API；父单附件列表排除子跟进图。文档扩展 `docs/miniapp-api-card-followup.md` §5；`miniapp/migrate.php` 补表/列；契约 `tests/miniapp_visit_child_followup_contract.php`。
