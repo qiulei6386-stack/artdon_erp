@@ -12,6 +12,7 @@ require __DIR__ . '/../../artdon_erp/crm_log.php';
 require __DIR__ . '/../../artdon_erp/crm_visit.php';
 require_once __DIR__ . '/../../artdon_erp/includes/crm_visit_miniapp.php';
 require_once __DIR__ . '/../../artdon_erp/includes/crm_visit_followup_log.php';
+require_once __DIR__ . '/../../artdon_erp/includes/dispatch_miniapp_list.php';
 
 
 /** Visit.country (general_ci) vs customer.country (unicode_ci) — unify to avoid Illegal mix of collations. */
@@ -4010,11 +4011,19 @@ mapi_out(true, '', [
                 $like = '%' . $kw . '%';
                 array_push($params, $like, $like, $like, $like);
             }
+            // Recurring/multi: one row per parent_group_id (website dn_list fold), not every historical child.
+            if ($kind === 'dispatch') {
+                [$foldSql, $foldParams] = dispatch_miniapp_list_fold_sql($statusFilter, 't');
+                $where[] = $foldSql;
+                foreach ($foldParams as $fp) {
+                    $params[] = $fp;
+                }
+            }
             $sqlWhere = implode(' AND ', $where);
             $cntSt = db()->prepare("SELECT COUNT(*) FROM dispatch_next_tasks t WHERE {$sqlWhere}");
             $cntSt->execute($params);
             $total = (int)$cntSt->fetchColumn();
-            $st = db()->prepare("SELECT t.id, t.task_no, t.task_type, t.title, t.project, t.description, t.status, t.priority,
+            $st = db()->prepare("SELECT t.id, t.task_no, t.task_type, t.dispatch_mode, t.parent_group_id, t.title, t.project, t.description, t.status, t.priority,
                 t.created_by, t.assigned_to, t.task_date, t.due_at, t.completed_at, t.cancelled_at,
                 t.progress, t.linked_system, t.linked_table, t.linked_id, t.linked_title, t.linked_json,
                 t.created_at, t.updated_at,
@@ -4048,10 +4057,13 @@ mapi_out(true, '', [
                 $related = $customerName !== '' ? $customerName : ($matterLabel !== '' ? $matterLabel : (string)($r['linked_title'] ?? ''));
                 if ($related === '' && $visitId > 0) $related = '拜访#' . $visitId;
                 $kindLabel = in_array($taskType, ['personal', 'private'], true) ? '个人' : '派工';
+                $parentGroupId = (int)($r['parent_group_id'] ?? 0);
                 $list[] = [
                     'id' => (int)$r['id'],
                     'task_no' => (string)$r['task_no'],
                     'task_type' => $taskType,
+                    'dispatch_mode' => (string)($r['dispatch_mode'] ?? ''),
+                    'parent_group_id' => $parentGroupId > 0 ? $parentGroupId : 0,
                     'kind' => in_array($taskType, ['personal', 'private'], true) ? 'personal' : 'dispatch',
                     'kind_label' => $kindLabel,
                     'title' => (string)$r['title'],

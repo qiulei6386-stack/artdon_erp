@@ -93,6 +93,7 @@ contract_tests=(
   tests/dispatch_current_account_visibility_contract.php
   tests/dispatch_new_personal_order_isolated.php
   tests/miniapp_dispatch_create_isolated.php
+  tests/miniapp_dispatch_list_fold_contract.php
   tests/miniapp_card_followup_contract.php
   tests/miniapp_quotation_calculation_contract.php
   tests/miniapp_visit_child_followup_contract.php
