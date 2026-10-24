@@ -3,6 +3,7 @@ require_once __DIR__ . '/crm_task_center.php';
 
 require_once __DIR__ . '/crm_customer.php';
 require_once __DIR__ . '/includes/crm_visit_miniapp.php';
+require_once __DIR__ . '/includes/crm_visit_followup_log.php';
 
 function crm_visit_ensure_tables(): void
 {
@@ -350,7 +351,12 @@ function crm_visit_row(int $id): array
     if (!$row) throw new RuntimeException('拜访/来访记录不存在或无权查看。');
     $row['assistant_user_ids'] = json_decode((string)($row['assistant_user_ids_json'] ?? '[]'), true) ?: [];
     $row['followup_offsets'] = json_decode((string)($row['followup_offsets_json'] ?? '[]'), true) ?: [];
-    $row['files'] = crm_visit_files($id);
+    $row['files'] = crm_visit_files_exclude_followup_logs(crm_visit_files($id));
+    if (crm_visit_supports_child_followup_logs($row)) {
+        $row['followup_records'] = crm_visit_followup_logs_for_parent($id);
+    } else {
+        $row['followup_records'] = [];
+    }
     $row['result_history'] = crm_visit_results($id, $row);
     $row['result_count'] = count($row['result_history']);
     return $row;
@@ -1295,7 +1301,7 @@ function crm_visit_upload_files(int $visitId, string $kind, array $files, string
     $visit = crm_visit_row($visitId);
     $kind = $kind === 'image' ? 'image' : 'attachment';
     $fileRole = trim($fileRole);
-    if (!in_array($fileRole, ['communication', 'progress', 'followup_progress', 'background_check', ''], true)) {
+    if (!in_array($fileRole, ['communication', 'progress', 'followup_progress', 'background_check', 'visit_followup', ''], true)) {
         $fileRole = '';
     }
     if ($fileRole === 'followup_progress') {

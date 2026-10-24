@@ -60,9 +60,27 @@
 
 兼容：`followup_progress`、`followup_progress_attachments`、`text_record`（等同沟通内容）仍可能在响应中出现。
 
-## 5. 部署
+## 5. 拜访/来访详情下的「跟进记录」时间线（子记录）
+
+与并列 Tab `visit_category=跟进记录`、平时跟进 `daily_followup`、视频会议 `video_meeting` **无关**。子跟进只挂在某条**拜访**或**来访**详情下（`visit_type` 为 `customer_visit` / `customer_arrival`）。
+
+数据表：`visit_followup_logs`（`parent_visit_id`、`follow_date`、`content`、`created_by`、`created_at`）。图片复用 `crm_visit_files`，列 `followup_log_id` = 子记录 id，`photo_category` = `visit_followup`。
+
+| action | 方法 | 说明 |
+|--------|------|------|
+| `visit_followup_list` | POST JSON | `visit_id`（或 `parent_visit_id`）。返回 `followup_records[]` |
+| `visit_followup_save` | POST JSON | 新建/更新：`visit_id`、`follow_date`（`YYYY-MM-DD`）、`content`；更新时加 `id` 或 `followup_id` |
+| `visit_followup_delete` | POST JSON | `id` 或 `followup_id`；建议带 `visit_id` |
+| `visit_followup_attachment_upload` | POST multipart | `visit_id`、`followup_id`（子记录 id）、`file` |
+
+`action=visit` 详情在 `supports_child_followup_logs=true` 时附带 `followup_records[]`，每条含：
+
+- `id` / `followup_id`、`follow_date`、`content`、`created_by`、`created_at`
+- `attachments[]`：`id`、`url`、`photo_url`（图片）、`file_name`、`mime_type` 等
+
+## 6. 部署
 
 1. 合并后 GitHub Actions 快进 `artdon_erp` 至 `/www/wwwroot/Artdon/artdon_erp/`。
 2. 同步 `miniapp/api/` 至 `/www/wwwroot/Artdon/miniapp/api/`（与仓库一致）。
 3. 执行：`php miniapp/migrate.php`（CLI）；线上 `mx_ensure()` 会自动补列。
-4. 数据库：`artdon_new_erp`。新增列见 `miniapp/migrate.php`。
+4. 数据库：`artdon_new_erp`。新增列/表见 `miniapp/migrate.php`（含 `visit_followup_logs`、`crm_visit_files.followup_log_id`）。
