@@ -11,6 +11,13 @@ if (in_array(false, [$api, $lib, $visit, $mini, $migrate], true)) {
     throw new RuntimeException('visit child followup 源文件不可读');
 }
 
+if (strpos($lib, 'crm_visit_row(') !== false) {
+    throw new RuntimeException('契约失败：跟进子模块不得调用 crm_visit_row（防详情递归）');
+}
+if (strpos($lib, 'crm_visit_followup_log_parent_context') === false) {
+    throw new RuntimeException('契约失败：轻量父单校验 crm_visit_followup_log_parent_context');
+}
+
 foreach ([
     [$lib, 'visit_followup_logs', '跟进子表'],
     [$lib, 'parent_visit_id', '父拜访 id'],
