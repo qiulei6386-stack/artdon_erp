@@ -1,5 +1,14 @@
 # Artdon ERP 工作上下文
 
+## 2026-11-12：香港询盘已回复/关闭时同步新派工台任务
+
+- 本次完成：`inquiry.status_changed` 以前只把旧暂存任务 `website_inquiry_tasks` 标成 done，响应里没有 `data.new_desk_tasks`（香港读到的就是 0），也不读回传的 `new_desk_task_ids`。回复/关闭现在按派工台完成按钮同一套结果处理 `dispatch_next_tasks`：`status=done`、`progress=100`、`completed_at`、日志动作 `complete`，并通知创建人、刷新多人组计数。状态退回 `new`/`processing` 时改回 `in_progress` 并清空 `completed_at`（日志 `cancel_complete`）。没有工单 ID 时按 `staging_id` / `hk_inquiry_id` 找关联派工。`data.new_desk_tasks` 是实际改到的条数。已完成、已取消、别的询盘和个人待办不会被改。创建响应补上 `new_desk_task_ids`。
+- 修改文件：`website_inquiry_staging_bridge.php`、`tests/website_inquiry_status_sync_contract.php`、`tools/ci_php_checks.sh`、本文件。
+- 检查结果：`php -l` 通过 `website_inquiry_staging_bridge.php` 与 `tests/website_inquiry_status_sync_contract.php`。`php tests/website_inquiry_status_sync_contract.php` 通过，其中隔离 MySQL 覆盖：已回复只完成关联派工并写 `complete` 日志、重复调用条数为 0、退回 `processing` 改回 `in_progress`、没有工单 ID 时按香港询盘号找回、不改别的询盘 / 个人待办 / 已取消。`website_inquiry_dispatch_fields_contract.php` 与 `website_inquiry_dispatch_red_contract.php` 通过。未连接正式库，没有改询盘 #337 / #338。
+- 服务器部署情况：本环境未部署。合并后把同一提交里的 `website_inquiry_staging_bridge.php` 同步到 `/www/wwwroot/Artdon/artdon_erp/website_inquiry_staging_bridge.php`（只覆盖这一个运行文件即可）。
+- Git 提交号及推送状态：见分支 `cursor/inquiry-desk-status-sync-7861`。
+- 尚未完成：合并并同步服务器后，用一条测试询盘在香港标已回复，确认派工台对应任务变成已完成，且 `data.new_desk_tasks` 大于 0；再标回处理中，确认任务回到进行中。
+
 ## 2026-10-24：小程序派工列表折叠 recurring/fixed 子任务
 
 - 本次完成：`miniapp/api/index.php` 的 `dispatch_list`（派工 kind）与网站 `dn_list` 对齐：对 `parent_group_id>0` 的 recurring/multi 子任务只保留每组一条代表行（优先当天 `task_date`，否则最近未来开放日，再否则最早开放日；`done`/`cancelled` 按完成/取消时间取最新）。`COUNT` 与分页在折叠后统计。响应补充 `dispatch_mode`、`parent_group_id`。逻辑模块 `includes/dispatch_miniapp_list.php`；契约 `tests/miniapp_dispatch_list_fold_contract.php`。
