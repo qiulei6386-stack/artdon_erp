@@ -97,6 +97,7 @@ contract_tests=(
   tests/miniapp_card_followup_contract.php
   tests/miniapp_quotation_calculation_contract.php
   tests/miniapp_visit_child_followup_contract.php
+  tests/website_inquiry_status_sync_contract.php
   tests/dispatch_due_change_policy_contract.php
   tests/dispatch_multi_table_alignment_contract.php
   tests/quote_manual_component_repair_contract.php
