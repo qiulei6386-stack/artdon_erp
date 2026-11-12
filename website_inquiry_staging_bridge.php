@@ -273,9 +273,18 @@ function gz_bridge_assignee_names(array $payload): array
 function gz_bridge_user_ids(PDO $pdo, array $names): array
 {
     $ids = [];
+    $expanded = [];
     foreach ($names as $name) {
         $needle = strtolower(trim((string)$name));
         if ($needle === '') continue;
+        // HK route often sends "boss" for owner inbox; map to sales handlers.
+        if (in_array($needle, ['boss', 'admin', '老板', 'owner'], true)) {
+            foreach (['sukie', 'winnie', 'qiulei'] as $alias) $expanded[$alias] = $alias;
+            continue;
+        }
+        $expanded[$needle] = $needle;
+    }
+    foreach ($expanded as $needle) {
         $stmt = $pdo->prepare("SELECT id FROM crm_users
             WHERE status='active'
               AND (
@@ -289,6 +298,16 @@ function gz_bridge_user_ids(PDO $pdo, array $names): array
         $stmt->execute([$needle, $needle, $needle, $needle, $needle]);
         $id = (int)$stmt->fetchColumn();
         if ($id > 0 && !in_array($id, $ids, true)) $ids[] = $id;
+    }
+    if (!$ids) {
+        try {
+            foreach ($pdo->query("SELECT u.id FROM crm_users u LEFT JOIN crm_roles r ON r.id=u.role_id
+                WHERE u.status='active' AND (r.role_key IN ('super_admin','boss_admin') OR LOWER(u.username) IN ('qiulei','sukie'))
+                ORDER BY u.id ASC LIMIT 5") as $row) {
+                $id = (int)$row['id'];
+                if ($id > 0 && !in_array($id, $ids, true)) $ids[] = $id;
+            }
+        } catch (Throwable $e) {}
     }
     return $ids;
 }
@@ -607,6 +626,201 @@ function gz_bridge_create_notifications(PDO $pdo, int $stagingId, int $leadId, a
     return $created;
 }
 
+
+function gz_bridge_new_erp_db(): ?PDO
+{
+    static $pdo = false;
+    if ($pdo !== false) return $pdo;
+    $file = '/www/server/artdon_secrets/new_erp_database.php';
+    if (!is_file($file)) { $pdo = null; return null; }
+    try {
+        $c = require $file;
+        if (!is_array($c) || ($c['db_name'] ?? '') !== 'new_artdon_erp') { $pdo = null; return null; }
+        $pdo = new PDO(
+            'mysql:unix_socket=' . $c['db_socket'] . ';dbname=' . $c['db_name'] . ';charset=utf8mb4',
+            $c['db_user'],
+            $c['db_password'],
+            [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC, PDO::ATTR_EMULATE_PREPARES => false]
+        );
+        $pdo->exec("SET time_zone = '+00:00'");
+        return $pdo;
+    } catch (Throwable $e) {
+        $pdo = null;
+        return null;
+    }
+}
+
+function gz_bridge_new_user_ids(PDO $new, array $names): array
+{
+    $ids = [];
+    $expanded = [];
+    foreach ($names as $name) {
+        $needle = strtolower(trim((string)$name));
+        if ($needle === '') continue;
+        if (in_array($needle, ['boss', 'admin', '老板', 'owner'], true)) {
+            foreach (['sukie', 'winnie', 'qiulei'] as $alias) $expanded[$alias] = $alias;
+            continue;
+        }
+        $expanded[$needle] = $needle;
+    }
+    foreach ($expanded as $needle) {
+        $stmt = $new->prepare("SELECT id FROM users
+            WHERE status='active'
+              AND (
+                LOWER(username)=?
+                OR LOWER(display_name)=?
+                OR LOWER(IFNULL(email,''))=?
+                OR LOWER(SUBSTRING_INDEX(IFNULL(email,''),'@',1))=?
+              )
+            ORDER BY id ASC LIMIT 1");
+        $stmt->execute([$needle, $needle, $needle, $needle]);
+        $id = (int)$stmt->fetchColumn();
+        if ($id > 0 && !in_array($id, $ids, true)) $ids[] = $id;
+    }
+    if (!$ids) {
+        foreach ($new->query("SELECT id FROM users WHERE status='active' AND LOWER(username) IN ('qiulei','sukie') ORDER BY id ASC") as $row) {
+            $id = (int)$row['id'];
+            if ($id > 0 && !in_array($id, $ids, true)) $ids[] = $id;
+        }
+    }
+    return $ids;
+}
+
+function gz_bridge_new_system_user_id(PDO $new): ?int
+{
+    foreach ([
+        "SELECT id FROM users WHERE status='active' AND LOWER(username) IN ('qiulei','admin') ORDER BY id ASC LIMIT 1",
+        "SELECT id FROM users WHERE status='active' ORDER BY id ASC LIMIT 1",
+    ] as $sql) {
+        $id = (int)$new->query($sql)->fetchColumn();
+        if ($id > 0) return $id;
+    }
+    return null;
+}
+
+/**
+ * Create / upsert 派工 in new Guangzhou ERP desk (new_artdon_erp.desk_tasks).
+ * Marker: link_system=website_inquiry (UI paints these rows blue).
+ * Idempotent on link_ref = staging:{stagingId}:user:{userId}.
+ */
+function gz_bridge_new_desk_tasks(int $stagingId, int $leadId, array $payload): array
+{
+    $new = gz_bridge_new_erp_db();
+    if (!$new) return [];
+    $creatorId = gz_bridge_new_system_user_id($new);
+    if (!$creatorId) return [];
+    $assigneeIds = gz_bridge_new_user_ids($new, gz_bridge_assignee_names($payload));
+    if (!$assigneeIds) return [];
+
+    $hkId = (int)($payload['local_inquiry_id'] ?? 0);
+    $product = gz_bridge_clip($payload['product'] ?? $payload['project'] ?? '', 180);
+    $name = gz_bridge_clip($payload['name'] ?? '', 80);
+    $company = gz_bridge_clip($payload['company'] ?? '', 120);
+    $titleParts = array_values(array_filter(['官网询盘', $product, $name], static fn($v): bool => trim((string)$v) !== ''));
+    $title = gz_bridge_clip(implode('｜', $titleParts), 200) ?: '官网询盘';
+    $message = trim((string)($payload['message'] ?? $payload['description'] ?? ''));
+    $detail = trim((string)($payload['inquiry_detail'] ?? $payload['full_inquiry_detail'] ?? ''));
+    $productLink = trim((string)($payload['product_link'] ?? ''));
+    $description = trim(implode("\n", array_filter([
+        '来源：香港官网询盘',
+        '来源标记：官网',
+        '香港询盘ID：' . $hkId,
+        '广州暂存ID：' . $stagingId,
+        'CRM暂存池ID：' . $leadId,
+        '客户：' . $name,
+        '公司：' . $company,
+        '国家：' . (string)($payload['country'] ?? ''),
+        '邮箱：' . (string)($payload['email'] ?? ''),
+        '电话：' . (string)($payload['phone'] ?? ''),
+        'WhatsApp：' . (string)($payload['whatsapp'] ?? ''),
+        '产品：' . $product,
+        $productLink !== '' ? '查看询盘／产品：' . $productLink : '',
+        $message !== '' ? '留言：' . $message : '',
+        $detail !== '' ? '详情：' . $detail : '',
+    ], static fn($v): bool => !str_ends_with(trim((string)$v), '：'))));
+    $priority = gz_bridge_clip($payload['route_priority'] ?? 'normal', 30);
+    if ($priority === 'high') $priority = 'important';
+    if (!in_array($priority, ['normal', 'important', 'urgent', 'today'], true)) $priority = 'normal';
+    $dueDays = max(0, min(30, (int)($payload['route_due_days'] ?? 0)));
+    $dueDate = (new DateTimeImmutable('now', new DateTimeZone('Asia/Shanghai')))->modify('+' . $dueDays . ' day')->format('Y-m-d');
+    $tags = json_encode(['官网询盘'], JSON_UNESCAPED_UNICODE);
+    $ids = [];
+    foreach ($assigneeIds as $userId) {
+        $linkRef = 'staging:' . $stagingId . ':user:' . $userId;
+        $find = $new->prepare('SELECT id FROM desk_tasks WHERE deleted_at IS NULL AND link_system=? AND link_ref=? LIMIT 1');
+        $find->execute(['website_inquiry', $linkRef]);
+        $taskId = (int)$find->fetchColumn();
+        $linkLabel = gz_bridge_clip($name !== '' ? $name : ('询盘#' . ($hkId ?: $stagingId)), 160) ?: '官网询盘';
+        if ($taskId > 0) {
+            $stmt = $new->prepare('UPDATE desk_tasks
+                SET title=?, description=?, priority=?, due_date=?, link_label=?, tags=?,
+                    version=version+1, updated_at=UTC_TIMESTAMP(6)
+                WHERE id=?');
+            $stmt->execute([$title, $description, $priority, $dueDate, $linkLabel, $tags, $taskId]);
+        } else {
+            $self = $userId === $creatorId;
+            $status = $self ? 'in_progress' : 'pending_accept';
+            $stmt = $new->prepare('INSERT INTO desk_tasks
+                (type,mode,title,description,priority,status,creator_id,due_date,due_time,need_confirm,progress,tags,link_system,link_ref,link_label,created_at,updated_at)
+                VALUES (\'dispatch\',\'single\',?,?,?,?,?,?,NULL,1,0,?,?,?,?,UTC_TIMESTAMP(6),UTC_TIMESTAMP(6))');
+            $stmt->execute([$title, $description, $priority, $status, $creatorId, $dueDate, $tags, 'website_inquiry', $linkRef, $linkLabel]);
+            $taskId = (int)$new->lastInsertId();
+            if ($taskId > 0) {
+                $mem = $new->prepare('INSERT INTO desk_task_members(task_id,user_id,status,accepted_at,updated_at) VALUES(?,?,?,?,UTC_TIMESTAMP(6))');
+                $mem->execute([$taskId, $userId, $self ? 'in_progress' : 'pending_accept', $self ? gmdate('Y-m-d H:i:s') : null]);
+                $new->prepare('INSERT INTO desk_events(task_id,actor_id,subject_id,kind,from_value,to_value,detail,created_at)
+                    VALUES(?,?,NULL,\'create\',\'\',\'dispatch/single\',?,UTC_TIMESTAMP(6))')
+                    ->execute([$taskId, $creatorId, mb_substr($title, 0, 500)]);
+                if (!$self) {
+                    $new->prepare('INSERT INTO desk_notices(user_id,task_id,kind,title,body,dedupe_key,created_at) VALUES(?,?,?,?,?,?,UTC_TIMESTAMP(6))
+                        ON DUPLICATE KEY UPDATE title=VALUES(title),body=VALUES(body),read_at=NULL,snooze_until=NULL,created_at=VALUES(created_at)')
+                        ->execute([$userId, $taskId, 'new_dispatch', mb_substr('新官网询盘派工：' . $title, 0, 200), mb_substr($description, 0, 500), substr('new:' . $taskId, 0, 120)]);
+                }
+            }
+        }
+        if ($taskId > 0) $ids[] = $taskId;
+    }
+    return $ids;
+}
+
+function gz_bridge_new_desk_revoke(int $stagingId): int
+{
+    $new = gz_bridge_new_erp_db();
+    if (!$new) return 0;
+    $stmt = $new->prepare('UPDATE desk_tasks
+        SET status=\'cancelled\', cancelled_at=COALESCE(cancelled_at,UTC_TIMESTAMP(6)),
+            deleted_at=COALESCE(deleted_at,UTC_TIMESTAMP(6)), version=version+1, updated_at=UTC_TIMESTAMP(6)
+        WHERE deleted_at IS NULL
+          AND link_system=\'website_inquiry\'
+          AND (link_ref LIKE ? OR link_ref=?)');
+    $stmt->execute(['staging:' . $stagingId . ':%', (string)$stagingId]);
+    return $stmt->rowCount();
+}
+
+function gz_bridge_new_desk_complete(int $stagingId): int
+{
+    $new = gz_bridge_new_erp_db();
+    if (!$new) return 0;
+    $stmt = $new->prepare('UPDATE desk_tasks
+        SET status=\'done\', progress=100, completed_at=COALESCE(completed_at,UTC_TIMESTAMP(6)),
+            version=version+1, updated_at=UTC_TIMESTAMP(6)
+        WHERE deleted_at IS NULL
+          AND status NOT IN (\'done\',\'cancelled\')
+          AND link_system=\'website_inquiry\'
+          AND (link_ref LIKE ? OR link_ref=?)');
+    $stmt->execute(['staging:' . $stagingId . ':%', (string)$stagingId]);
+    $n = $stmt->rowCount();
+    if ($n > 0) {
+        $new->prepare('UPDATE desk_task_members m
+            INNER JOIN desk_tasks t ON t.id=m.task_id
+            SET m.status=\'done\', m.progress=100, m.done_at=COALESCE(m.done_at,UTC_TIMESTAMP(6)), m.updated_at=UTC_TIMESTAMP(6)
+            WHERE t.link_system=\'website_inquiry\' AND (t.link_ref LIKE ? OR t.link_ref=?)')
+            ->execute(['staging:' . $stagingId . ':%', (string)$stagingId]);
+    }
+    return $n;
+}
+
+
 function gz_bridge_revoke_inquiry(PDO $pdo, array $payload): array
 {
     $stagingId = (int)($payload['staging_id'] ?? $payload['bridge_inquiry_id'] ?? 0);
@@ -670,285 +884,22 @@ function gz_bridge_revoke_inquiry(PDO $pdo, array $payload): array
         $summary['lead_pool'] = $stmt->rowCount();
     }
 
+    try { $summary['new_desk_tasks'] = gz_bridge_new_desk_revoke($stagingId); }
+    catch (Throwable $e) { $summary['new_desk_tasks'] = 0; }
+
     return $summary;
-}
-
-function gz_bridge_positive_ids(mixed $raw): array
-{
-    if (is_int($raw) || (is_string($raw) && preg_match('/^\d+$/', trim($raw)))) {
-        $raw = [$raw];
-    } elseif (is_string($raw) && str_contains($raw, ',')) {
-        $raw = preg_split('/\s*,\s*/', trim($raw)) ?: [];
-    }
-    if (!is_array($raw)) return [];
-    $ids = [];
-    foreach ($raw as $value) {
-        if (!is_int($value) && !(is_string($value) && preg_match('/^\d+$/', trim((string)$value)))) continue;
-        $id = (int)$value;
-        if ($id > 0 && !in_array($id, $ids, true)) $ids[] = $id;
-    }
-    return $ids;
-}
-
-function gz_bridge_explicit_desk_ids(array $payload): array
-{
-    $ids = gz_bridge_positive_ids($payload['new_desk_task_ids'] ?? null);
-    if ($ids) return $ids;
-    return gz_bridge_positive_ids($payload['dispatch_next_task_ids'] ?? null);
-}
-
-function gz_bridge_desk_status_label(string $status): string
-{
-    return [
-        'pending_accept' => '待接收',
-        'accepted' => '已接收',
-        'in_progress' => '进行中',
-        'paused' => '暂停',
-        'submitted' => '待确认',
-        'returned' => '退回',
-        'rejected' => '拒绝',
-        'done' => '已完成',
-        'cancelled' => '已取消',
-    ][$status] ?? $status;
-}
-
-/**
- * Same transition as the desk complete button (dispatch update_task):
- * closing sets status done, progress 100, completed_at now;
- * reopening sets status in_progress and clears completed_at.
- * Null means the row is already in the target state.
- */
-function gz_bridge_desk_transition(string $currentStatus, bool $closing): ?array
-{
-    if ($closing) {
-        if (in_array($currentStatus, ['done', 'cancelled'], true)) return null;
-        return ['status' => 'done', 'progress' => 100, 'log_action' => 'complete'];
-    }
-    if ($currentStatus !== 'done') return null;
-    return ['status' => 'in_progress', 'progress' => null, 'log_action' => 'cancel_complete'];
-}
-
-function gz_bridge_desk_json_mentions(string $json, string $key, int $id): bool
-{
-    if ($id <= 0 || $json === '') return false;
-    return preg_match('/"' . preg_quote($key, '/') . '":\s*' . $id . '(?!\d)/', $json) === 1;
-}
-
-function gz_bridge_desk_task_belongs(array $task, int $stagingId, int $hkId, bool $explicit): bool
-{
-    $system = (string)($task['linked_system'] ?? '');
-    $table = (string)($task['linked_table'] ?? '');
-    if ($system !== '' && $system !== 'website_inquiry') return false;
-    if ($table !== '' && $table !== 'website_inquiry_staging') return false;
-    $linkedId = (string)($task['linked_id'] ?? '');
-    $json = (string)($task['linked_json'] ?? '');
-    $mentionsStaging = $stagingId > 0 && (
-        $linkedId === (string)$stagingId
-        || str_starts_with($linkedId, 'staging:' . $stagingId . ':')
-        || gz_bridge_desk_json_mentions($json, 'staging_id', $stagingId)
-    );
-    $mentionsHk = $hkId > 0 && gz_bridge_desk_json_mentions($json, 'hk_inquiry_id', $hkId);
-    if ($mentionsStaging || $mentionsHk) return true;
-    if (!$explicit) return false;
-    if ($system !== 'website_inquiry') return false;
-    if ($linkedId !== '' && preg_match('/staging:(\d+)/', $linkedId, $match) && $stagingId > 0 && (int)$match[1] !== $stagingId) {
-        return false;
-    }
-    if ($json !== '' && $stagingId > 0 && preg_match('/"staging_id":\s*(\d+)/', $json, $match) && (int)$match[1] !== $stagingId && !$mentionsHk) {
-        return false;
-    }
-    if ($json !== '' && $hkId > 0 && preg_match('/"hk_inquiry_id":\s*(\d+)/', $json, $match) && (int)$match[1] !== $hkId && !$mentionsStaging) {
-        return false;
-    }
-    return true;
-}
-
-function gz_bridge_find_desk_task_ids(PDO $pdo, int $stagingId, int $hkId): array
-{
-    $parts = [];
-    $params = [];
-    if ($stagingId > 0) {
-        $parts[] = "(linked_system='website_inquiry' AND linked_table='website_inquiry_staging' AND (linked_id LIKE ? OR linked_id=? OR linked_json LIKE ? OR linked_json LIKE ? OR linked_json LIKE ? OR linked_json LIKE ?))";
-        $params[] = 'staging:' . $stagingId . ':%';
-        $params[] = (string)$stagingId;
-        $params[] = '%"staging_id":' . $stagingId . ',%';
-        $params[] = '%"staging_id": ' . $stagingId . ',%';
-        $params[] = '%"staging_id":' . $stagingId . '}%';
-        $params[] = '%"staging_id": ' . $stagingId . '}%';
-    }
-    if ($hkId > 0) {
-        $parts[] = "(linked_json LIKE ? OR linked_json LIKE ? OR linked_json LIKE ? OR linked_json LIKE ?)";
-        $params[] = '%"hk_inquiry_id":' . $hkId . ',%';
-        $params[] = '%"hk_inquiry_id": ' . $hkId . ',%';
-        $params[] = '%"hk_inquiry_id":' . $hkId . '}%';
-        $params[] = '%"hk_inquiry_id": ' . $hkId . '}%';
-    }
-    if (!$parts) return [];
-    $stmt = $pdo->prepare('SELECT id FROM dispatch_next_tasks WHERE is_deleted=0 AND (' . implode(' OR ', $parts) . ') ORDER BY id ASC');
-    $stmt->execute($params);
-    $ids = [];
-    foreach ($stmt->fetchAll(PDO::FETCH_COLUMN) as $id) {
-        $id = (int)$id;
-        if ($id > 0 && !in_array($id, $ids, true)) $ids[] = $id;
-    }
-    return $ids;
-}
-
-function gz_bridge_desk_log(PDO $pdo, int $taskId, int $userId, string $action, string $field, string $old, string $new, string $note): void
-{
-    if ($taskId <= 0 || $userId <= 0 || !gz_bridge_table_exists($pdo, 'dispatch_next_logs')) return;
-    $stmt = $pdo->prepare("INSERT INTO dispatch_next_logs(task_id,user_id,action_type,field_name,old_value,new_value,note,ip,user_agent,created_at) VALUES(?,?,?,?,?,?,?,?,?,NOW())");
-    $stmt->execute([$taskId, $userId, $action, $field, $old, $new, $note, '', 'website_inquiry_staging_bridge']);
-}
-
-function gz_bridge_notification_type_allowed(PDO $pdo, string $type): bool
-{
-    static $cache = [];
-    $key = spl_object_id($pdo);
-    if (!array_key_exists($key, $cache)) {
-        $cache[$key] = '';
-        try {
-            $stmt = $pdo->prepare("SELECT COLUMN_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='dispatch_next_notifications' AND COLUMN_NAME='type'");
-            $stmt->execute();
-            $cache[$key] = strtolower((string)$stmt->fetchColumn());
-        } catch (Throwable $e) {
-            $cache[$key] = '';
-        }
-    }
-    $columnType = $cache[$key];
-    if ($columnType === '') return false;
-    if (!str_starts_with($columnType, 'enum(')) return true;
-    return str_contains($columnType, "'" . strtolower($type) . "'");
-}
-
-function gz_bridge_desk_insert_notification(PDO $pdo, int $recipientId, int $senderId, int $taskId, string $type, string $title, string $message): void
-{
-    if ($recipientId <= 0 || $taskId <= 0 || !gz_bridge_table_exists($pdo, 'dispatch_next_notifications')) return;
-    if (!gz_bridge_notification_type_allowed($pdo, $type)) return;
-    $dedupe = 'website_inquiry_desk:' . $type . ':' . $taskId . ':' . $recipientId;
-    if (gz_bridge_column_exists($pdo, 'dispatch_next_notifications', 'dedupe_key')) {
-        $existing = $pdo->prepare('SELECT id FROM dispatch_next_notifications WHERE dedupe_key=? LIMIT 1');
-        $existing->execute([$dedupe]);
-        $existingId = (int)$existing->fetchColumn();
-        if ($existingId > 0) {
-            $pdo->prepare('UPDATE dispatch_next_notifications SET sender_id=?, title=?, message=? WHERE id=?')
-                ->execute([$senderId > 0 ? $senderId : null, $title, $message, $existingId]);
-            return;
-        }
-    }
-    $cols = ['recipient_id', 'sender_id', 'task_id', 'type', 'title', 'message'];
-    $params = [$recipientId, $senderId > 0 ? $senderId : null, $taskId, $type, $title, $message];
-    $optional = [
-        'actor_id' => $senderId > 0 ? $senderId : null,
-        'event_type' => $type,
-        'severity' => 'normal',
-        'action_required' => 0,
-        'status' => 'read',
-        'dedupe_key' => $dedupe,
-    ];
-    foreach ($optional as $column => $value) {
-        if (!gz_bridge_column_exists($pdo, 'dispatch_next_notifications', $column)) continue;
-        $cols[] = $column;
-        $params[] = $value;
-    }
-    $sql = 'INSERT INTO dispatch_next_notifications(' . implode(',', $cols) . ',created_at) VALUES(' . implode(',', array_fill(0, count($params), '?')) . ',NOW())';
-    $pdo->prepare($sql)->execute($params);
-}
-
-function gz_bridge_desk_notify_change(PDO $pdo, array $task, int $actorId, string $oldStatus, string $newStatus): void
-{
-    $taskId = (int)($task['id'] ?? 0);
-    $creatorId = (int)($task['created_by'] ?? 0);
-    $assigneeId = (int)($task['assigned_to'] ?? 0);
-    $recipients = [];
-    foreach ([$creatorId, $assigneeId] as $recipientId) {
-        if ($recipientId > 0 && $recipientId !== $actorId && !in_array($recipientId, $recipients, true)) $recipients[] = $recipientId;
-    }
-    $arrow = '状态：' . gz_bridge_desk_status_label($oldStatus) . ' → ' . gz_bridge_desk_status_label($newStatus);
-    foreach ($recipients as $recipientId) {
-        gz_bridge_desk_insert_notification($pdo, $recipientId, $actorId, $taskId, 'task_updated', '任务已更新', $arrow);
-    }
-    if ($newStatus === 'done' && $creatorId > 0 && $creatorId !== $actorId) {
-        gz_bridge_desk_insert_notification($pdo, $creatorId, $actorId, $taskId, 'done', '派工已完成', (string)($task['title'] ?? ''));
-    }
-}
-
-function gz_bridge_desk_refresh_group(PDO $pdo, int $groupId): void
-{
-    if ($groupId <= 0 || !gz_bridge_table_exists($pdo, 'dispatch_next_groups')) return;
-    $stmt = $pdo->prepare("SELECT COUNT(*) total_count, SUM(status='done') done_count FROM dispatch_next_tasks WHERE parent_group_id=? AND is_deleted=0");
-    $stmt->execute([$groupId]);
-    $row = $stmt->fetch() ?: ['total_count' => 0, 'done_count' => 0];
-    $status = (int)$row['total_count'] > 0 && (int)$row['total_count'] === (int)$row['done_count'] ? 'done' : 'active';
-    $pdo->prepare('UPDATE dispatch_next_groups SET total_count=?, done_count=?, status=?, updated_at=NOW() WHERE id=?')
-        ->execute([(int)$row['total_count'], (int)$row['done_count'], $status, $groupId]);
-}
-
-function gz_bridge_sync_desk_tasks(PDO $pdo, array $payload, int $stagingId, int $hkId, bool $closing): int
-{
-    if (!gz_bridge_table_exists($pdo, 'dispatch_next_tasks')) return 0;
-    $explicit = gz_bridge_explicit_desk_ids($payload);
-    $ids = $explicit !== [] ? $explicit : gz_bridge_find_desk_task_ids($pdo, $stagingId, $hkId);
-    if (!$ids) return 0;
-    $actorId = (int)(gz_bridge_system_user_id($pdo) ?? 0);
-    $select = $pdo->prepare('SELECT id, status, progress, created_by, assigned_to, parent_group_id, title, linked_system, linked_table, linked_id, linked_json FROM dispatch_next_tasks WHERE id=? AND is_deleted=0 LIMIT 1');
-    $updated = 0;
-    $groups = [];
-    foreach ($ids as $id) {
-        $select->execute([$id]);
-        $task = $select->fetch();
-        if (!$task || !gz_bridge_desk_task_belongs($task, $stagingId, $hkId, $explicit !== [])) continue;
-        $transition = gz_bridge_desk_transition((string)$task['status'], $closing);
-        if ($transition === null) continue;
-        $oldStatus = (string)$task['status'];
-        $oldProgress = (int)$task['progress'];
-        if ($transition['status'] === 'done') {
-            $stmt = $pdo->prepare("UPDATE dispatch_next_tasks
-                SET status='done', progress=100, completed_at=NOW(), updated_at=NOW()
-                WHERE id=? AND is_deleted=0 AND status NOT IN ('done','cancelled')");
-        } else {
-            $stmt = $pdo->prepare("UPDATE dispatch_next_tasks
-                SET status='in_progress', started_at=COALESCE(started_at,NOW()), completed_at=NULL, cancelled_at=NULL, updated_at=NOW()
-                WHERE id=? AND is_deleted=0 AND status='done'");
-        }
-        $stmt->execute([$id]);
-        if ($stmt->rowCount() < 1) continue;
-        $updated++;
-        $logUser = $actorId > 0 ? $actorId : (int)$task['created_by'];
-        gz_bridge_desk_log(
-            $pdo,
-            $id,
-            $logUser,
-            (string)$transition['log_action'],
-            'status',
-            $oldStatus,
-            (string)$transition['status'],
-            '状态：从「' . gz_bridge_desk_status_label($oldStatus) . '」改为「' . gz_bridge_desk_status_label((string)$transition['status']) . '」'
-        );
-        if ($transition['status'] === 'done' && $oldProgress !== 100) {
-            gz_bridge_desk_log($pdo, $id, $logUser, 'progress', 'progress', (string)$oldProgress, '100', '进度：从「' . $oldProgress . '%」改为「100%」');
-        }
-        gz_bridge_desk_notify_change($pdo, $task, $logUser, $oldStatus, (string)$transition['status']);
-        $groupId = (int)($task['parent_group_id'] ?? 0);
-        if ($groupId > 0) $groups[$groupId] = true;
-    }
-    foreach (array_keys($groups) as $groupId) gz_bridge_desk_refresh_group($pdo, (int)$groupId);
-    return $updated;
 }
 
 function gz_bridge_complete_inquiry(PDO $pdo, array $payload): array
 {
     $websiteStatus = strtolower(trim((string)($payload['status'] ?? '')));
-    $closing = in_array($websiteStatus, ['replied', 'closed'], true);
-    $reopening = in_array($websiteStatus, ['new', 'processing'], true);
-    if (!$closing && !$reopening) {
-        throw new InvalidArgumentException('Only replied, closed, new, or processing inquiry status can sync linked desk tasks.');
+    if (!in_array($websiteStatus, ['replied', 'closed'], true)) {
+        throw new InvalidArgumentException('Only replied or closed inquiry status can complete linked tasks.');
     }
 
     $stagingId = (int)($payload['staging_id'] ?? $payload['bridge_inquiry_id'] ?? 0);
     $hkId = (int)($payload['local_inquiry_id'] ?? $payload['hk_inquiry_id'] ?? 0);
-    $explicitDeskIds = gz_bridge_explicit_desk_ids($payload);
-    if ($stagingId <= 0 && $hkId <= 0 && !$explicitDeskIds) {
+    if ($stagingId <= 0 && $hkId <= 0) {
         throw new InvalidArgumentException('Missing staging_id or local_inquiry_id for status sync.');
     }
     if ($stagingId <= 0 && $hkId > 0) {
@@ -956,44 +907,45 @@ function gz_bridge_complete_inquiry(PDO $pdo, array $payload): array
         $find->execute([$hkId]);
         $stagingId = (int)$find->fetchColumn();
     }
-
-    $summary = [
-        'staging_id' => $stagingId,
-        'website_tasks' => 0,
-        'crm_tasks' => 0,
-        'dispatch_tasks' => 0,
-        'new_desk_tasks' => 0,
-        'inquiry_status' => $websiteStatus,
-    ];
-    if ($stagingId <= 0 && !$explicitDeskIds) return $summary;
-
-    if ($closing && $stagingId > 0) {
-        $stmt = $pdo->prepare("UPDATE website_inquiry_tasks
-            SET status='done', updated_at=NOW()
-            WHERE staging_id=? AND status NOT IN ('done','cancelled')");
-        $stmt->execute([$stagingId]);
-        $summary['website_tasks'] = $stmt->rowCount();
-
-        if (gz_bridge_table_exists($pdo, 'crm_tasks')) {
-            $stmt = $pdo->prepare("UPDATE crm_tasks
-                SET status='done', completed_at=COALESCE(completed_at,NOW()), result=IF(result='', '官网已回复', result), updated_at=NOW()
-                WHERE source_type='website_inquiry'
-                  AND (source_id LIKE ? OR source_id=?)
-                  AND status NOT IN ('done','cancelled')
-                  AND deleted_at IS NULL");
-            $stmt->execute(['staging:' . $stagingId . ':%', (string)$stagingId]);
-            $summary['crm_tasks'] = $stmt->rowCount();
-        }
+    if ($stagingId <= 0) {
+        return ['staging_id'=>0, 'website_tasks'=>0, 'crm_tasks'=>0, 'dispatch_tasks'=>0];
     }
 
-    $deskUpdated = gz_bridge_sync_desk_tasks($pdo, $payload, $stagingId, $hkId, $closing);
-    $summary['dispatch_tasks'] = $deskUpdated;
-    $summary['new_desk_tasks'] = $deskUpdated;
-    return $summary;
-}
+    $summary = ['staging_id'=>$stagingId, 'website_tasks'=>0, 'crm_tasks'=>0, 'dispatch_tasks'=>0];
 
-if (defined('GZ_BRIDGE_LIBRARY_ONLY')) {
-    return;
+    $stmt = $pdo->prepare("UPDATE website_inquiry_tasks
+        SET status='done', updated_at=NOW()
+        WHERE staging_id=? AND status NOT IN ('done','cancelled')");
+    $stmt->execute([$stagingId]);
+    $summary['website_tasks'] = $stmt->rowCount();
+
+    if (gz_bridge_table_exists($pdo, 'crm_tasks')) {
+        $stmt = $pdo->prepare("UPDATE crm_tasks
+            SET status='done', completed_at=COALESCE(completed_at,NOW()), result=IF(result='', '官网已回复', result), updated_at=NOW()
+            WHERE source_type='website_inquiry'
+              AND (source_id LIKE ? OR source_id=?)
+              AND status NOT IN ('done','cancelled')
+              AND deleted_at IS NULL");
+        $stmt->execute(['staging:' . $stagingId . ':%', (string)$stagingId]);
+        $summary['crm_tasks'] = $stmt->rowCount();
+    }
+
+    if (gz_bridge_table_exists($pdo, 'dispatch_next_tasks')) {
+        $stmt = $pdo->prepare("UPDATE dispatch_next_tasks
+            SET status='done', progress=100, completed_at=COALESCE(completed_at,NOW()), updated_at=NOW()
+            WHERE is_deleted=0
+              AND status NOT IN ('done','cancelled')
+              AND linked_system='website_inquiry'
+              AND linked_table='website_inquiry_staging'
+              AND (linked_id LIKE ? OR linked_id=? OR linked_json LIKE ?)");
+        $stmt->execute(['staging:' . $stagingId . ':%', (string)$stagingId, '%\"staging_id\":' . $stagingId . '%']);
+        $summary['dispatch_tasks'] = $stmt->rowCount();
+    }
+
+    try { $summary['new_desk_tasks'] = gz_bridge_new_desk_complete($stagingId); }
+    catch (Throwable $e) { $summary['new_desk_tasks'] = 0; }
+
+    return $summary;
 }
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
@@ -1033,13 +985,12 @@ try {
         $pdo->beginTransaction();
         $summary = gz_bridge_complete_inquiry($pdo, $payload);
         $pdo->commit();
-        $reopened = in_array((string)($summary['inquiry_status'] ?? ''), ['new', 'processing'], true);
         gz_bridge_json([
             'ok' => true,
             'reference' => 'status-staging-' . (int)($summary['staging_id'] ?? 0),
-            'process_status' => $reopened ? 'reopened' : 'completed',
+            'process_status' => 'completed',
             'data' => $summary,
-            'message' => $reopened ? 'Linked desk tasks reopened.' : 'Linked website inquiry tasks completed.',
+            'message' => 'Linked website inquiry tasks completed.',
         ]);
     }
     if ((string)($envelope['event_type'] ?? '') !== 'inquiry.created') {
@@ -1057,6 +1008,12 @@ try {
     $dispatchTaskIds = gz_bridge_dispatch_next_tasks($pdo, $stagingId, $leadPoolId, $payload);
     $notificationIds = gz_bridge_create_notifications($pdo, $stagingId, $leadPoolId, $payload);
     $pdo->commit();
+    $newDeskIds = [];
+    try {
+        $newDeskIds = gz_bridge_new_desk_tasks($stagingId, $leadPoolId, $payload);
+    } catch (Throwable $e) {
+        $newDeskIds = ['error' => $e->getMessage()];
+    }
     gz_bridge_json([
         'ok' => true,
         'reference' => 'staging-' . $stagingId,
@@ -1068,10 +1025,9 @@ try {
         'lead_pool_id' => $leadPoolId,
         'crm_task_ids' => $crmTaskIds,
         'dispatch_task_ids' => $dispatchTaskIds,
-        'dispatch_next_task_ids' => $dispatchTaskIds,
-        'new_desk_task_ids' => $dispatchTaskIds,
+        'new_desk_task_ids' => $newDeskIds,
         'notification_ids' => $notificationIds,
-        'message' => 'Website inquiry stored in staging pool, CRM lead pool, and CRM task center.',
+        'message' => 'Website inquiry stored in staging pool, CRM lead pool, CRM task center, and new ERP desk.',
     ]);
 } catch (Throwable $e) {
     if (isset($pdo) && $pdo instanceof PDO && $pdo->inTransaction()) $pdo->rollBack();
