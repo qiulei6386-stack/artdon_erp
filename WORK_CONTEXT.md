@@ -1,5 +1,15 @@
 # Artdon ERP 工作上下文
 
+## 2026-11-12：把生产桥接热修入库，并修好新派工台完成
+
+- 本次完成：`main` 上的 PR #50（`debddc1`）按旧库 `dispatch_next_tasks` 完成询盘，和广州线上 2026-11-07 热修不是同一份文件。线上文件连的是 `new_artdon_erp.desk_tasks`（配置 `/www/server/artdon_secrets/new_erp_database.php`）。已先把该线上文件按字节收回仓库（sha256 `64a554222bb4424768e505192b61ab2ca8f97f088fd464beb10eb425ec05a55b`，52611 字节）。随后只改 `inquiry.status_changed`：香港报 `replied`/`closed` 时，用载荷 `new_desk_task_ids` 把新派工标完成；没有 ID 时按 `staging_id` 的 `link_ref` 和描述里的 `广州暂存ID` / `香港询盘ID` 查找。退回 `new`/`processing` 时改回未完成（`in_progress`，进度 0，有完成时间列则清空）。`data.new_desk_tasks` 是实际更新行数。新库更新失败时在 `data.new_desk_error` 写原因，不再把异常收成 0。旧暂存、CRM、旧派工的完成语句保持热修原样；退回状态不改这三张旧表。鉴权未改。没有改表。
+- 根因：`gz_bridge_new_desk_complete` 只按 `link_ref LIKE staging:{暂存ID}:%` 更新，不读 `new_desk_task_ids`，香港询盘号只写在描述里。另外完成语句写了建单没用过的 `desk_tasks.completed_at` 和 `desk_task_members.progress`/`done_at`；状态枚举里没有可写的完成值时也会失败。这两类错误都被 `catch` 记成 `new_desk_tasks=0`。
+- 修改文件：`website_inquiry_staging_bridge.php`、`tests/website_inquiry_status_sync_contract.php`、本文件。
+- 检查结果：`php -l` 通过上述 PHP。`php tests/website_inquiry_status_sync_contract.php` 通过，隔离 MySQL 覆盖：缺新库配置时报错且旧暂存仍完成、状态枚举没有完成值时报错且行不变、旧 SQL 在缺少 `completed_at` 时失败而新逻辑仍能完成、重复调用为 0、退回 `processing`/`new` 改回未完成、只给香港询盘号能找回、错误的暂存号配上正确的香港号和工单 ID 只改这一单、不改另一张询盘、个人待办、已取消、已删除和更长的询盘号。未连接正式库，没有改询盘 #337 / #338。
+- 服务器部署情况：本环境未部署，也没有改生产文件。合并后先备份线上 `website_inquiry_staging_bridge.php`，确认线上 sha256 仍是 `64a554222bb4424768e505192b61ab2ca8f97f088fd464beb10eb425ec05a55b`，再用本 PR 最终文件覆盖 `/www/wwwroot/Artdon/artdon_erp/website_inquiry_staging_bridge.php`。不要把当前 `main` 原样部署上去。
+- Git 提交号及推送状态：热修原文件是 `ffa377a093f161ab7d2049e00fb747323257439a`。修复和本记录是该提交之后的那一笔，推送到 `origin` 分支 `cursor/inquiry-new-desk-status-3150`。正式目录未快进。
+- 尚未完成：合并后按上面的顺序部署，并用一条测试询盘在香港标已回复，确认 `data.new_desk_tasks` 大于 0 且新派工台任务完成；再标回处理中，确认任务回到未完成。不要用 #337 / #338。撤回询盘仍按热修把新派工异常收成 0，这次没有改。
+
 ## 2026-11-12：香港询盘已回复/关闭时同步新派工台任务
 
 - 本次完成：`inquiry.status_changed` 以前只把旧暂存任务 `website_inquiry_tasks` 标成 done，响应里没有 `data.new_desk_tasks`（香港读到的就是 0），也不读回传的 `new_desk_task_ids`。回复/关闭现在按派工台完成按钮同一套结果处理 `dispatch_next_tasks`：`status=done`、`progress=100`、`completed_at`、日志动作 `complete`，并通知创建人、刷新多人组计数。状态退回 `new`/`processing` 时改回 `in_progress` 并清空 `completed_at`（日志 `cancel_complete`）。没有工单 ID 时按 `staging_id` / `hk_inquiry_id` 找关联派工。`data.new_desk_tasks` 是实际改到的条数。已完成、已取消、别的询盘和个人待办不会被改。创建响应补上 `new_desk_task_ids`。
