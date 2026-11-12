@@ -10,42 +10,41 @@ if (!is_string($source)) {
 
 $required = [
     "function gz_bridge_complete_inquiry",
-    "function gz_bridge_sync_desk_tasks",
-    "function gz_bridge_desk_transition",
-    "function gz_bridge_explicit_desk_ids",
+    "function gz_bridge_new_desk_sync",
+    "function gz_bridge_new_desk_belongs",
     "'inquiry.status_changed'",
-    "Only replied, closed, new, or processing inquiry status can sync linked desk tasks.",
+    'Only replied, closed, new, or processing inquiry status can sync linked desk tasks.',
     "SET status='done', updated_at=NOW()",
-    "SET status='done', completed_at=COALESCE(completed_at,NOW())",
-    "SET status='done', progress=100, completed_at=NOW(), updated_at=NOW()",
-    "SET status='in_progress', started_at=COALESCE(started_at,NOW()), completed_at=NULL, cancelled_at=NULL, updated_at=NOW()",
     "linked_system='website_inquiry'",
     "linked_table='website_inquiry_staging'",
-    "status NOT IN ('done','cancelled')",
-    "'new_desk_tasks' => 0",
-    "\$summary['new_desk_tasks'] = \$deskUpdated",
-    "'new_desk_task_ids' => \$dispatchTaskIds",
+    "'new_desk_task_ids' => \$newDeskIds",
+    'new_desk_error',
+    'Linked desk tasks reopened.',
+    "hash_hmac('sha256'",
+    'Bridge signature mismatch.',
     "gz_bridge_verify(\$config, \$body)",
-    "'log_action' => 'complete'",
-    "'log_action' => 'cancel_complete'",
-    'website_inquiry_desk:',
 ];
-
 foreach ($required as $needle) {
     if (!str_contains($source, $needle)) {
         fwrite(STDERR, "Missing status-sync contract: {$needle}\n");
         exit(1);
     }
 }
-
-$findStart = strpos($source, 'function gz_bridge_find_desk_task_ids');
-$findEnd = strpos($source, 'function gz_bridge_desk_log', $findStart ?: 0);
-$findBody = $findStart !== false && $findEnd !== false ? substr($source, $findStart, $findEnd - $findStart) : '';
-if ($findBody === '' || str_contains($findBody, '%\\"staging_id\\":')) {
-    fwrite(STDERR, "Desk lookup still uses the escaped JSON LIKE pattern that cannot match linked_json.\n");
+if (str_contains($source, "'new_desk_task_ids' => \$dispatchTaskIds")) {
+    fwrite(STDERR, "new_desk_task_ids must stay the new ERP desk ids, not dispatch_next_tasks ids.\n");
     exit(1);
 }
-
+$completeAt = strpos($source, 'function gz_bridge_complete_inquiry');
+$libraryAt = strpos($source, "if (defined('GZ_BRIDGE_LIBRARY_ONLY'))", $completeAt ?: 0);
+$completeBody = $completeAt !== false && $libraryAt !== false ? substr($source, $completeAt, $libraryAt - $completeAt) : '';
+if ($completeBody === '' || !str_contains($completeBody, 'gz_bridge_new_desk_sync') || !str_contains($completeBody, 'new_desk_error')) {
+    fwrite(STDERR, "Status sync does not return a new-desk error from the new ERP connection.\n");
+    exit(1);
+}
+if (str_contains($completeBody, "['new_desk_tasks'] = 0")) {
+    fwrite(STDERR, "complete_inquiry still swallows new-desk failures as new_desk_tasks=0.\n");
+    exit(1);
+}
 $verifyAt = strpos($source, 'gz_bridge_verify($config, $body)');
 $statusAt = strpos($source, "=== 'inquiry.status_changed'");
 if ($verifyAt === false || $statusAt === false || $verifyAt > $statusAt) {
@@ -62,53 +61,74 @@ function inquiry_sync_fail(string $message): void
     exit(1);
 }
 
-if (gz_bridge_explicit_desk_ids(['new_desk_task_ids' => [278, '279', 0, -3, 278], 'dispatch_next_task_ids' => [999]]) !== [278, 279]) {
+function inquiry_sync_same(mixed $actual, mixed $expected, string $label): void
+{
+    if ($actual !== $expected) {
+        inquiry_sync_fail($label . ' expected ' . json_encode($expected, JSON_UNESCAPED_UNICODE) . ' got ' . json_encode($actual, JSON_UNESCAPED_UNICODE));
+    }
+}
+
+if (gz_bridge_new_desk_ids(['new_desk_task_ids' => [501, '502', 0, -3, 501], 'dispatch_next_task_ids' => [504]]) !== [501, 502]) {
     inquiry_sync_fail('new_desk_task_ids must win and drop duplicates, zero, and non-ids.');
 }
-if (gz_bridge_explicit_desk_ids(['dispatch_next_task_ids' => '280, 281']) !== [280, 281]) {
-    inquiry_sync_fail('Empty new_desk_task_ids must fall through to dispatch_next_task_ids.');
+if (gz_bridge_new_desk_ids(['dispatch_next_task_ids' => [504], 'crm_task_ids' => [12]]) !== []) {
+    inquiry_sync_fail('Old dispatch_next_tasks ids are not new desk ids.');
 }
-if (gz_bridge_explicit_desk_ids(['crm_task_ids' => [12]]) !== []) {
-    inquiry_sync_fail('CRM task ids are not desk task ids.');
+if (gz_bridge_new_desk_ids(['new_desk_task_ids' => '503, 504']) !== [503, 504]) {
+    inquiry_sync_fail('A comma-separated new_desk_task_ids string should be accepted.');
 }
-if (gz_bridge_desk_transition('pending_accept', true) !== ['status' => 'done', 'progress' => 100, 'log_action' => 'complete']) {
-    inquiry_sync_fail('Closing a desk task must use the desk complete status.');
+if (gz_bridge_new_desk_marker_id("香港询盘ID：8803380\n", '香港询盘ID') !== 8803380) {
+    inquiry_sync_fail('Marker parser must read the whole inquiry id.');
 }
-if (gz_bridge_desk_transition('done', true) !== null || gz_bridge_desk_transition('cancelled', true) !== null) {
-    inquiry_sync_fail('Closing must leave done and cancelled desk tasks untouched.');
+if (gz_bridge_new_desk_marker_id("香港询盘ID：8803380\n", '香港询盘ID') === 880338) {
+    inquiry_sync_fail('Marker parser matched a longer inquiry id.');
 }
-if (gz_bridge_desk_transition('done', false) !== ['status' => 'in_progress', 'progress' => null, 'log_action' => 'cancel_complete']) {
-    inquiry_sync_fail('Reopening must return the desk task to in_progress.');
+if (gz_bridge_new_status_choice("enum('pending_accept','in_progress','cancelled')", true) !== null) {
+    inquiry_sync_fail('A status enum without done must not be written as done.');
 }
-if (gz_bridge_desk_transition('pending_accept', false) !== null || gz_bridge_desk_transition('cancelled', false) !== null) {
-    inquiry_sync_fail('Reopening must not change tasks that are not done.');
+if (gz_bridge_new_status_choice("enum('pending_accept','in_progress','done','cancelled')", true) !== 'done') {
+    inquiry_sync_fail('done must be selected when the desk status enum allows it.');
+}
+if (gz_bridge_new_status_choice("enum('pending_accept','Completed')", true) !== 'Completed') {
+    inquiry_sync_fail('The canonical enum spelling must be kept.');
+}
+if (gz_bridge_new_status_choice('varchar(40)', false) !== 'in_progress') {
+    inquiry_sync_fail('Reopen must use in_progress when status is free text.');
+}
+if (gz_bridge_new_status_kind('completed') !== 'done' || gz_bridge_new_status_kind('cancelled') !== 'cancelled' || gz_bridge_new_status_kind('pending_accept') !== 'open') {
+    inquiry_sync_fail('Desk status kinds were not recognized.');
 }
 
 $linked = static function (int $staging, int $hk, string $system = 'website_inquiry'): array {
     return [
-        'linked_system' => $system,
-        'linked_table' => $system === 'website_inquiry' ? 'website_inquiry_staging' : 'other',
-        'linked_id' => 'staging:' . $staging . ':user:6',
-        'linked_json' => json_encode(['staging_id' => $staging, 'hk_inquiry_id' => $hk], JSON_UNESCAPED_UNICODE),
+        'link_system' => $system,
+        'link_ref' => 'staging:' . $staging . ':user:6',
+        'description' => "香港询盘ID：{$hk}\n广州暂存ID：{$staging}\n",
     ];
 };
-if (!gz_bridge_desk_task_belongs($linked(880321, 880338), 880321, 880338, true)) {
-    inquiry_sync_fail('A desk task linked to this inquiry must be updated.');
+if (!gz_bridge_new_desk_belongs($linked(900, 338), 900, 338, false)) {
+    inquiry_sync_fail('Fallback lookup must match staging id and hk inquiry id.');
 }
-if (gz_bridge_desk_task_belongs($linked(880999, 880337), 880321, 880338, true)) {
-    inquiry_sync_fail('An explicit id linked to another inquiry must be left alone.');
+if (!gz_bridge_new_desk_belongs($linked(900, 338), 880321, 338, true)) {
+    inquiry_sync_fail('Explicit desk ids must still match when only the hk inquiry id agrees.');
 }
-if (gz_bridge_desk_task_belongs(['linked_system' => '', 'linked_table' => '', 'linked_id' => '', 'linked_json' => ''], 880321, 880338, true)) {
+if (!gz_bridge_new_desk_belongs($linked(900, 338), 880321, 338, false)) {
+    inquiry_sync_fail('Fallback lookup must use the hk inquiry id when staging id does not match link_ref.');
+}
+if (gz_bridge_new_desk_belongs($linked(111, 337), 900, 338, true)) {
+    inquiry_sync_fail('An explicit id from another inquiry must be left alone.');
+}
+if (gz_bridge_new_desk_belongs($linked(8803380, 8803380), 900, 338, false)) {
+    inquiry_sync_fail('Hong Kong id lookup must not match a longer id.');
+}
+if (gz_bridge_new_desk_belongs(['link_system' => '', 'link_ref' => '', 'description' => ''], 900, 338, true)) {
     inquiry_sync_fail('An unrelated personal task id must not be completed.');
 }
-if (gz_bridge_desk_task_belongs($linked(880321, 880338, 'PLM'), 880321, 880338, true)) {
+if (gz_bridge_new_desk_belongs($linked(900, 338, 'PLM'), 900, 338, true)) {
     inquiry_sync_fail('A task from another module must not be completed.');
 }
-if (!gz_bridge_desk_json_mentions('{"staging_id": 880321, "hk_inquiry_id": 880338}', 'staging_id', 880321)) {
-    inquiry_sync_fail('MySQL JSON text with a space after the colon must still match.');
-}
-if (gz_bridge_desk_json_mentions('{"staging_id": 8803210}', 'staging_id', 880321)) {
-    inquiry_sync_fail('Staging id lookup must not match a longer id.');
+if (!gz_bridge_new_desk_belongs($linked(900, 338), 0, 0, true)) {
+    inquiry_sync_fail('Explicit website inquiry ids are in scope when the payload has no other key.');
 }
 
 inquiry_sync_mysql();
@@ -119,10 +139,10 @@ function inquiry_sync_mysql(): void
 {
     $mysqld = '/usr/sbin/mysqld';
     if (!is_executable($mysqld)) {
-        echo "desk mysql integration skipped: mysqld is not installed\n";
+        echo "new desk mysql integration skipped: mysqld is not installed\n";
         return;
     }
-    $base = sys_get_temp_dir() . '/inquiry-desk-mysql-' . bin2hex(random_bytes(4));
+    $base = sys_get_temp_dir() . '/inquiry-new-desk-' . bin2hex(random_bytes(4));
     if (!mkdir($base, 0700, true) && !is_dir($base)) {
         inquiry_sync_fail('Unable to create the isolated MySQL directory.');
     }
@@ -138,7 +158,7 @@ function inquiry_sync_mysql(): void
         $base
     );
     if (!is_resource($init) || proc_close($init) !== 0) {
-        echo "desk mysql integration skipped: initialize failed\n";
+        echo "new desk mysql integration skipped: initialize failed\n";
         inquiry_sync_cleanup_dir($base);
         return;
     }
@@ -153,12 +173,12 @@ function inquiry_sync_mysql(): void
         $base
     );
     if (!is_resource($server)) {
-        echo "desk mysql integration skipped: server did not start\n";
+        echo "new desk mysql integration skipped: server did not start\n";
         inquiry_sync_cleanup_dir($base);
         return;
     }
     $ready = false;
-    $deadline = time() + 25;
+    $deadline = time() + 40;
     while (time() < $deadline) {
         if (file_exists($socket)) {
             $ready = true;
@@ -171,24 +191,41 @@ function inquiry_sync_mysql(): void
     if (!$ready) {
         proc_terminate($server);
         proc_close($server);
-        echo "desk mysql integration skipped: socket was not ready\n";
+        echo "new desk mysql integration skipped: socket was not ready\n";
         inquiry_sync_cleanup_dir($base);
         return;
     }
     try {
-        $pdo = new PDO('mysql:unix_socket=' . $socket . ';charset=utf8mb4', 'root', '', [
+        $root = new PDO('mysql:unix_socket=' . $socket . ';charset=utf8mb4', 'root', '', [
             PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
             PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
             PDO::ATTR_EMULATE_PREPARES => false,
         ]);
-        $serverInfo = $pdo->query('SELECT @@skip_networking AS network_off, @@datadir AS data_path, @@socket AS socket_path')->fetch();
+        $serverInfo = $root->query('SELECT @@skip_networking AS network_off, @@datadir AS data_path')->fetch();
         if ((int)($serverInfo['network_off'] ?? 0) !== 1 || !str_starts_with((string)$serverInfo['data_path'], $data)) {
             inquiry_sync_fail('Refused to run the desk sync test on a non-isolated MySQL server.');
         }
-        $pdo->exec('CREATE DATABASE inquiry_desk_sync');
-        $pdo->exec('USE inquiry_desk_sync');
+        $root->exec('CREATE DATABASE inquiry_status_sync');
+        $root->exec('CREATE DATABASE new_artdon_erp');
+        $root->exec('CREATE DATABASE new_desk_missing');
+        $old = new PDO('mysql:unix_socket=' . $socket . ';dbname=inquiry_status_sync;charset=utf8mb4', 'root', '', [
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+            PDO::ATTR_EMULATE_PREPARES => false,
+        ]);
+        $new = new PDO('mysql:unix_socket=' . $socket . ';dbname=new_artdon_erp;charset=utf8mb4', 'root', '', [
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+            PDO::ATTR_EMULATE_PREPARES => false,
+        ]);
+        $missing = new PDO('mysql:unix_socket=' . $socket . ';dbname=new_desk_missing;charset=utf8mb4', 'root', '', [
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+            PDO::ATTR_EMULATE_PREPARES => false,
+        ]);
+
         try {
-            gz_bridge_complete_inquiry($pdo, ['status' => 'archived', 'staging_id' => 1]);
+            gz_bridge_complete_inquiry($old, ['status' => 'archived', 'staging_id' => 1]);
             inquiry_sync_fail('Unknown inquiry status must be rejected.');
         } catch (InvalidArgumentException $e) {
             if (!str_contains($e->getMessage(), 'replied, closed, new, or processing')) {
@@ -196,19 +233,16 @@ function inquiry_sync_mysql(): void
             }
         }
         try {
-            gz_bridge_complete_inquiry($pdo, ['status' => 'replied']);
+            gz_bridge_complete_inquiry($old, ['status' => 'replied']);
             inquiry_sync_fail('Status sync without an inquiry id or desk ids must be rejected.');
         } catch (InvalidArgumentException $e) {
             if (!str_contains($e->getMessage(), 'Missing staging_id')) {
                 inquiry_sync_fail('Unexpected missing-id error: ' . $e->getMessage());
             }
         }
-        gz_bridge_migrate($pdo);
-        $pdo->exec("CREATE TABLE crm_roles (id INT PRIMARY KEY, role_key VARCHAR(40)) ENGINE=InnoDB");
-        $pdo->exec("CREATE TABLE crm_users (id INT PRIMARY KEY, username VARCHAR(80), email VARCHAR(190), status VARCHAR(20), role_id INT NULL, real_name VARCHAR(80) NULL, english_name VARCHAR(80) NULL) ENGINE=InnoDB");
-        $pdo->exec("INSERT INTO crm_roles (id, role_key) VALUES (1, 'admin')");
-        $pdo->exec("INSERT INTO crm_users (id, username, email, status, role_id, real_name) VALUES (1, 'admin', 'admin@example.test', 'active', 1, '管理员'), (6, 'sales', 'sales@example.test', 'active', 1, '业务')");
-        $pdo->exec("CREATE TABLE crm_tasks (
+
+        gz_bridge_migrate($old);
+        $old->exec("CREATE TABLE crm_tasks (
             id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
             status VARCHAR(40) NOT NULL,
             completed_at DATETIME NULL,
@@ -218,178 +252,253 @@ function inquiry_sync_mysql(): void
             deleted_at DATETIME NULL,
             updated_at DATETIME NULL
         ) ENGINE=InnoDB");
-        $pdo->exec("CREATE TABLE dispatch_next_tasks (
+        $old->exec("CREATE TABLE dispatch_next_tasks (
             id BIGINT UNSIGNED NOT NULL PRIMARY KEY,
             status VARCHAR(40) NOT NULL,
             progress INT NOT NULL DEFAULT 0,
-            created_by INT NOT NULL,
-            assigned_to INT NOT NULL,
-            parent_group_id BIGINT NULL,
-            title VARCHAR(240) NOT NULL DEFAULT '',
             linked_system VARCHAR(60) NULL,
             linked_table VARCHAR(80) NULL,
             linked_id VARCHAR(80) NULL,
             linked_json JSON NULL,
             is_deleted TINYINT NOT NULL DEFAULT 0,
             completed_at DATETIME NULL,
-            started_at DATETIME NULL,
-            cancelled_at DATETIME NULL,
             updated_at DATETIME NULL
         ) ENGINE=InnoDB");
-        $pdo->exec("CREATE TABLE dispatch_next_logs (
-            id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
-            task_id BIGINT NULL,
-            user_id INT NOT NULL,
-            action_type VARCHAR(80) NOT NULL,
-            field_name VARCHAR(80) NULL,
-            old_value TEXT NULL,
-            new_value TEXT NULL,
-            note TEXT NULL,
-            ip VARCHAR(80) NULL,
-            user_agent VARCHAR(255) NULL,
-            created_at DATETIME NULL
-        ) ENGINE=InnoDB");
-        $pdo->exec("CREATE TABLE dispatch_next_notifications (
-            id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
-            recipient_id INT NOT NULL,
-            sender_id INT NULL,
-            task_id BIGINT NULL,
-            type ENUM('new_dispatch','urge','accepted','done','returned') NOT NULL DEFAULT 'new_dispatch',
-            title VARCHAR(220) NOT NULL,
-            message TEXT NULL,
-            dedupe_key VARCHAR(190) NULL,
-            created_at DATETIME NULL,
-            UNIQUE KEY uq_notice_dedupe (dedupe_key)
-        ) ENGINE=InnoDB");
-        $pdo->exec("CREATE TABLE dispatch_next_groups (
+        $old->exec("INSERT INTO website_inquiry_staging (hk_inquiry_id, idempotency_key, payload_json, received_at) VALUES (880338, 'isolated-880338', '{}', NOW())");
+        $stagingId = (int)$old->query('SELECT id FROM website_inquiry_staging WHERE hk_inquiry_id=880338')->fetchColumn();
+        if ($stagingId <= 0) inquiry_sync_fail('Staging row was not created.');
+        $old->exec("INSERT INTO website_inquiry_tasks (staging_id, hk_inquiry_id, title, status) VALUES ({$stagingId}, 880338, '旧暂存', 'pending')");
+        $old->exec("INSERT INTO website_inquiry_tasks (staging_id, hk_inquiry_id, title, status) VALUES (99999, 880337, '另一张', 'pending')");
+        $old->exec("INSERT INTO crm_tasks (status, result, source_type, source_id) VALUES ('pending', '', 'website_inquiry', 'staging:{$stagingId}:user:6'), ('pending', '', 'website_inquiry', 'staging:99999:user:6')");
+        $insertDispatch = $old->prepare('INSERT INTO dispatch_next_tasks (id, status, linked_system, linked_table, linked_id) VALUES (?,?,?,?,?)');
+        $insertDispatch->execute([701, 'pending_accept', 'website_inquiry', 'website_inquiry_staging', 'staging:' . $stagingId . ':user:6']);
+        $insertDispatch->execute([702, 'pending_accept', 'website_inquiry', 'website_inquiry_staging', 'staging:99999:user:6']);
+
+        $new->exec("CREATE TABLE desk_tasks (
             id BIGINT UNSIGNED NOT NULL PRIMARY KEY,
-            total_count INT NOT NULL DEFAULT 0,
-            done_count INT NOT NULL DEFAULT 0,
-            status VARCHAR(40) NOT NULL DEFAULT 'active',
-            updated_at DATETIME NULL
+            status ENUM('pending_accept','in_progress','cancelled') NOT NULL,
+            progress INT NOT NULL DEFAULT 0,
+            link_system VARCHAR(60) NULL,
+            link_ref VARCHAR(190) NULL,
+            description TEXT NULL,
+            deleted_at DATETIME(6) NULL,
+            version INT NOT NULL DEFAULT 1,
+            updated_at DATETIME(6) NULL
         ) ENGINE=InnoDB");
-
-        $insertDesk = $pdo->prepare("INSERT INTO dispatch_next_tasks
-            (id, status, progress, created_by, assigned_to, parent_group_id, title, linked_system, linked_table, linked_id, linked_json)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?)");
-        $deskRow = static function (int $id, string $status, int $staging, int $hk, int $assignee, ?int $group = null) use ($insertDesk): void {
-            $insertDesk->execute([
-                $id, $status, 0, 2, $assignee, $group, '官网询盘测试 ' . $id,
-                'website_inquiry', 'website_inquiry_staging', 'staging:' . $staging . ':user:' . $assignee,
-                json_encode(['staging_id' => $staging, 'hk_inquiry_id' => $hk], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
-            ]);
+        $new->exec("CREATE TABLE desk_task_members (
+            id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+            task_id BIGINT NOT NULL,
+            user_id INT NOT NULL,
+            status VARCHAR(40) NOT NULL,
+            accepted_at DATETIME NULL,
+            updated_at DATETIME(6) NULL
+        ) ENGINE=InnoDB");
+        $insertDesk = $new->prepare('INSERT INTO desk_tasks (id, status, progress, link_system, link_ref, description, deleted_at, version) VALUES (?,?,?,?,?,?,?,1)');
+        $describe = static function (int $hk, int $staging): string {
+            return "香港询盘ID：{$hk}\n广州暂存ID：{$staging}\n";
         };
-        $deskRow(880278, 'pending_accept', 880321, 880338, 6, 7);
-        $deskRow(880279, 'accepted', 880321, 880338, 6, 7);
-        $deskRow(880280, 'done', 880321, 880338, 6);
-        $deskRow(880281, 'pending_accept', 880999, 880337, 6);
-        $deskRow(880290, 'cancelled', 880321, 880338, 6);
-        $insertDesk->execute([880282, 'pending_accept', 0, 2, 6, null, '个人待办', null, null, null, null]);
-        $pdo->exec("INSERT INTO dispatch_next_groups (id, total_count, done_count, status) VALUES (7, 2, 0, 'active')");
-        $pdo->exec("INSERT INTO website_inquiry_staging (hk_inquiry_id, idempotency_key, payload_json, received_at) VALUES (880338, 'isolated-880338', '{}', NOW())");
-        $stagingId = (int)$pdo->query("SELECT id FROM website_inquiry_staging WHERE hk_inquiry_id=880338")->fetchColumn();
-        $pdo->exec("INSERT INTO website_inquiry_tasks (staging_id, hk_inquiry_id, title, status) VALUES ({$stagingId}, 880338, '旧暂存', 'pending')");
-        $pdo->exec("INSERT INTO website_inquiry_tasks (staging_id, hk_inquiry_id, title, status) VALUES (880999, 880337, '另一张', 'pending')");
-        $pdo->exec("INSERT INTO crm_tasks (status, result, source_type, source_id) VALUES ('pending', '', 'website_inquiry', 'staging:{$stagingId}:user:6'), ('pending', '', 'website_inquiry', 'staging:880999:user:6')");
+        $insertDesk->execute([501, 'in_progress', 0, 'website_inquiry', 'staging:' . $stagingId . ':user:6', $describe(880338, $stagingId), null]);
+        $insertDesk->execute([502, 'pending_accept', 0, 'website_inquiry', 'staging:' . $stagingId . ':user:7', $describe(880338, $stagingId), null]);
+        $insertDesk->execute([504, 'pending_accept', 0, 'website_inquiry', 'staging:99999:user:6', $describe(880337, 99999), null]);
+        $insertDesk->execute([505, 'pending_accept', 0, null, null, '个人待办', null]);
+        $insertDesk->execute([506, 'cancelled', 0, 'website_inquiry', 'staging:' . $stagingId . ':user:8', $describe(880338, $stagingId), null]);
+        $insertDesk->execute([507, 'in_progress', 0, 'website_inquiry', 'staging:' . $stagingId . ':user:9', $describe(880338, $stagingId), gmdate('Y-m-d H:i:s')]);
+        $insertDesk->execute([508, 'pending_accept', 0, 'website_inquiry', 'staging:8803380:user:6', $describe(8803380, 8803380), null]);
+        $new->exec("INSERT INTO desk_task_members (task_id, user_id, status) VALUES (501, 6, 'in_progress'), (502, 7, 'pending_accept')");
 
-        $payload = [
+        unset($GLOBALS['gz_bridge_new_erp_override']);
+        $disconnected = gz_bridge_complete_inquiry($old, [
             'status' => 'replied',
             'staging_id' => $stagingId,
             'hk_inquiry_id' => 880338,
-            'new_desk_task_ids' => [880278, 880279, 880280, 880281, 880282, 880290],
-            'dispatch_next_task_ids' => [880281],
-            'crm_task_ids' => [1],
-        ];
-        $first = gz_bridge_complete_inquiry($pdo, $payload);
-        if ((int)$first['new_desk_tasks'] !== 2 || (int)$first['dispatch_tasks'] !== 2) {
-            inquiry_sync_fail('Replied sync updated ' . json_encode($first) . ', expected 2 desk tasks.');
+            'new_desk_task_ids' => [501, 502],
+        ]);
+        inquiry_sync_same((int)$disconnected['new_desk_tasks'], 0, 'Missing new ERP config count');
+        if (!str_contains((string)($disconnected['new_desk_error'] ?? ''), 'New ERP database config is missing')) {
+            inquiry_sync_fail('Missing new ERP config was swallowed: ' . json_encode($disconnected, JSON_UNESCAPED_UNICODE));
         }
-        if ((int)$first['website_tasks'] !== 1 || (int)$first['crm_tasks'] !== 1) {
-            inquiry_sync_fail('Old staging or CRM sync count changed: ' . json_encode($first));
-        }
-        $done = $pdo->query("SELECT id, status, progress, completed_at IS NOT NULL AS has_completed FROM dispatch_next_tasks ORDER BY id")->fetchAll();
-        $byId = [];
-        foreach ($done as $row) $byId[(int)$row['id']] = $row;
-        foreach ([880278, 880279] as $id) {
-            if ($byId[$id]['status'] !== 'done' || (int)$byId[$id]['progress'] !== 100 || (int)$byId[$id]['has_completed'] !== 1) {
-                inquiry_sync_fail('Desk task ' . $id . ' was not completed on the desk path.');
-            }
-        }
-        if ($byId[880281]['status'] !== 'pending_accept' || $byId[880282]['status'] !== 'pending_accept' || $byId[880290]['status'] !== 'cancelled') {
-            inquiry_sync_fail('Unrelated, personal, or cancelled desk tasks were modified.');
-        }
-        if ((int)$pdo->query("SELECT status='pending' FROM website_inquiry_tasks WHERE staging_id=880999")->fetchColumn() !== 1) {
-            inquiry_sync_fail('Another inquiry staging task was modified.');
-        }
-        $logs = (int)$pdo->query("SELECT COUNT(*) FROM dispatch_next_logs WHERE action_type='complete' AND field_name='status' AND new_value='done'")->fetchColumn();
-        if ($logs !== 2) inquiry_sync_fail('Desk completion did not write the complete status log.');
-        $notes = (int)$pdo->query("SELECT COUNT(*) FROM dispatch_next_notifications WHERE type='done' AND title='派工已完成' AND recipient_id=2")->fetchColumn();
-        if ($notes !== 2) inquiry_sync_fail('Desk completion did not notify the creator the way the desk UI does.');
-        $group = $pdo->query('SELECT done_count, status FROM dispatch_next_groups WHERE id=7')->fetch();
-        if ((int)$group['done_count'] !== 2 || $group['status'] !== 'done') {
-            inquiry_sync_fail('Desk group counts were not refreshed.');
-        }
+        inquiry_sync_same((int)$disconnected['website_tasks'], 1, 'Old staging task count');
+        inquiry_sync_same((int)$disconnected['crm_tasks'], 1, 'Old CRM task count');
+        inquiry_sync_same((int)$disconnected['dispatch_tasks'], 1, 'Old dispatch task count');
+        inquiry_sync_same((string)$new->query('SELECT status FROM desk_tasks WHERE id=501')->fetchColumn(), 'in_progress', 'Desk task before connection');
+        inquiry_sync_same((string)$old->query('SELECT status FROM website_inquiry_tasks WHERE staging_id=99999')->fetchColumn(), 'pending', 'Other staging task');
+        inquiry_sync_same((string)$old->query('SELECT status FROM dispatch_next_tasks WHERE id=702')->fetchColumn(), 'pending_accept', 'Other dispatch task');
 
-        $second = gz_bridge_complete_inquiry($pdo, $payload);
-        if ((int)$second['new_desk_tasks'] !== 0) {
-            inquiry_sync_fail('Repeating replied must not update desk tasks again.');
+        $GLOBALS['gz_bridge_new_erp_override'] = $new;
+        $enumBlocked = gz_bridge_complete_inquiry($old, [
+            'status' => 'closed',
+            'staging_id' => $stagingId,
+            'hk_inquiry_id' => 880338,
+            'new_desk_task_ids' => [501, 502],
+        ]);
+        inquiry_sync_same((int)$enumBlocked['new_desk_tasks'], 0, 'Enum without done count');
+        if (!str_contains((string)($enumBlocked['new_desk_error'] ?? ''), 'no done value')) {
+            inquiry_sync_fail('Status enum failure was swallowed: ' . json_encode($enumBlocked, JSON_UNESCAPED_UNICODE));
         }
+        inquiry_sync_same((string)$new->query('SELECT status FROM desk_tasks WHERE id=501')->fetchColumn(), 'in_progress', 'Desk task after enum refusal');
 
-        $reopenPayload = $payload;
-        $reopenPayload['status'] = 'processing';
-        $reopenPayload['new_desk_task_ids'] = [880278, 880281, 880282];
-        $reopened = gz_bridge_complete_inquiry($pdo, $reopenPayload);
-        if ((int)$reopened['new_desk_tasks'] !== 1) {
-            inquiry_sync_fail('Reopen updated ' . json_encode($reopened) . ', expected only the linked done task.');
+        $new->exec("ALTER TABLE desk_tasks MODIFY status ENUM('pending_accept','in_progress','done','cancelled') NOT NULL");
+        $legacyFailed = false;
+        try {
+            $new->prepare("UPDATE desk_tasks SET status='done', progress=100, completed_at=COALESCE(completed_at,UTC_TIMESTAMP(6)) WHERE id=?")->execute([501]);
+        } catch (PDOException $e) {
+            $legacyFailed = str_contains($e->getMessage(), 'completed_at');
         }
-        $restored = $pdo->query("SELECT status, completed_at, progress FROM dispatch_next_tasks WHERE id=880278")->fetch();
-        if ($restored['status'] !== 'in_progress' || $restored['completed_at'] !== null || (int)$restored['progress'] !== 100) {
-            inquiry_sync_fail('Reopen did not use the desk in_progress transition.');
+        if (!$legacyFailed) inquiry_sync_fail('The old complete SQL did not fail when completed_at is absent.');
+        $memberLegacyFailed = false;
+        try {
+            $new->prepare("UPDATE desk_task_members SET status='done', progress=100, done_at=UTC_TIMESTAMP(6) WHERE task_id=?")->execute([501]);
+        } catch (PDOException $e) {
+            $memberLegacyFailed = str_contains($e->getMessage(), 'progress') || str_contains($e->getMessage(), 'done_at');
         }
-        if ((int)$pdo->query("SELECT COUNT(*) FROM dispatch_next_logs WHERE task_id=880278 AND action_type='cancel_complete' AND new_value='in_progress'")->fetchColumn() !== 1) {
-            inquiry_sync_fail('Reopen did not write cancel_complete.');
-        }
-        if ($pdo->query("SELECT status FROM dispatch_next_tasks WHERE id=880279")->fetchColumn() !== 'done') {
-            inquiry_sync_fail('Reopen changed a desk task that was not in the id list.');
-        }
-        if ($pdo->query("SELECT status FROM website_inquiry_tasks WHERE hk_inquiry_id=880338")->fetchColumn() !== 'done') {
-            inquiry_sync_fail('Reopen must not rewrite the old staging task.');
-        }
-        $againPayload = $payload;
-        $againPayload['new_desk_task_ids'] = [880278];
-        $again = gz_bridge_complete_inquiry($pdo, $againPayload);
-        if ((int)$again['new_desk_tasks'] !== 1) {
-            inquiry_sync_fail('Completing again after reopen failed: ' . json_encode($again));
-        }
-        if ((int)$pdo->query("SELECT COUNT(*) FROM dispatch_next_notifications WHERE dedupe_key='website_inquiry_desk:done:880278:2'")->fetchColumn() !== 1) {
-            inquiry_sync_fail('Repeating completion duplicated the desk notification.');
-        }
+        if (!$memberLegacyFailed) inquiry_sync_fail('The old member SQL did not fail when progress and done_at are absent.');
+        inquiry_sync_same((string)$new->query('SELECT status FROM desk_tasks WHERE id=501')->fetchColumn(), 'in_progress', 'Legacy SQL must not commit a partial update');
 
-        $pdo->exec("UPDATE dispatch_next_tasks SET status='pending_accept', progress=0, completed_at=NULL WHERE id IN (880278, 880279)");
-        $pdo->exec("DELETE FROM dispatch_next_logs");
-        $fallback = gz_bridge_complete_inquiry($pdo, [
+        $done = gz_bridge_complete_inquiry($old, [
+            'status' => 'Replied',
+            'staging_id' => $stagingId,
+            'local_inquiry_id' => 880338,
+            'new_desk_task_ids' => [501, 502, 504, 505, 506, 507, 508],
+            'dispatch_next_task_ids' => [504],
+        ]);
+        inquiry_sync_same((int)$done['new_desk_tasks'], 2, 'Replied desk count');
+        inquiry_sync_same((int)$done['website_tasks'], 0, 'Already completed staging task');
+        if (array_key_exists('new_desk_error', $done)) inquiry_sync_fail('Successful desk sync reported ' . $done['new_desk_error']);
+        inquiry_sync_expect_desk($new, 501, 'done', 100);
+        inquiry_sync_expect_desk($new, 502, 'done', 100);
+        inquiry_sync_expect_desk($new, 504, 'pending_accept', 0);
+        inquiry_sync_expect_desk($new, 505, 'pending_accept', 0);
+        inquiry_sync_expect_desk($new, 506, 'cancelled', 0);
+        inquiry_sync_expect_desk($new, 507, 'in_progress', 0);
+        inquiry_sync_expect_desk($new, 508, 'pending_accept', 0);
+        inquiry_sync_same((int)$new->query('SELECT version FROM desk_tasks WHERE id=501')->fetchColumn(), 2, 'Desk version');
+        inquiry_sync_same((string)$new->query('SELECT status FROM desk_task_members WHERE task_id=501')->fetchColumn(), 'done', 'Member 501');
+        inquiry_sync_same((string)$new->query('SELECT status FROM desk_task_members WHERE task_id=502')->fetchColumn(), 'done', 'Member 502');
+        inquiry_sync_same((string)$old->query("SELECT status FROM crm_tasks WHERE source_id='staging:99999:user:6'")->fetchColumn(), 'pending', 'Other CRM task');
+
+        $again = gz_bridge_complete_inquiry($old, [
+            'status' => 'replied',
+            'staging_id' => $stagingId,
+            'hk_inquiry_id' => 880338,
+            'new_desk_task_ids' => [501, 502],
+        ]);
+        inquiry_sync_same((int)$again['new_desk_tasks'], 0, 'Repeat replied count');
+
+        $reopened = gz_bridge_complete_inquiry($old, [
+            'status' => 'processing',
+            'staging_id' => $stagingId,
+            'hk_inquiry_id' => 880338,
+            'new_desk_task_ids' => [501, 502, 504, 505, 506],
+        ]);
+        inquiry_sync_same((int)$reopened['new_desk_tasks'], 2, 'Reopen count');
+        inquiry_sync_same((string)($reopened['inquiry_status'] ?? ''), 'processing', 'Reopen status');
+        inquiry_sync_expect_desk($new, 501, 'in_progress', 0);
+        inquiry_sync_expect_desk($new, 502, 'in_progress', 0);
+        inquiry_sync_expect_desk($new, 504, 'pending_accept', 0);
+        inquiry_sync_expect_desk($new, 506, 'cancelled', 0);
+        inquiry_sync_same((string)$new->query('SELECT status FROM desk_task_members WHERE task_id=501')->fetchColumn(), 'in_progress', 'Reopened member');
+        inquiry_sync_same((string)$old->query('SELECT status FROM website_inquiry_tasks WHERE hk_inquiry_id=880338')->fetchColumn(), 'done', 'Reopen rewrote the old staging task');
+        inquiry_sync_same((string)$old->query('SELECT status FROM dispatch_next_tasks WHERE id=701')->fetchColumn(), 'done', 'Reopen rewrote the old dispatch task');
+
+        $fallback = gz_bridge_complete_inquiry($old, [
             'status' => 'closed',
             'hk_inquiry_id' => 880338,
         ]);
-        if ((int)$fallback['new_desk_tasks'] !== 2 || (int)$fallback['staging_id'] !== $stagingId) {
-            inquiry_sync_fail('Fallback lookup by hk inquiry id updated ' . json_encode($fallback));
+        inquiry_sync_same((int)$fallback['new_desk_tasks'], 2, 'HK id fallback count');
+        inquiry_sync_same((int)$fallback['staging_id'], $stagingId, 'HK id resolved staging id');
+        inquiry_sync_expect_desk($new, 501, 'done', 100);
+        inquiry_sync_expect_desk($new, 502, 'done', 100);
+        inquiry_sync_expect_desk($new, 504, 'pending_accept', 0);
+        inquiry_sync_expect_desk($new, 508, 'pending_accept', 0);
+
+        $secondReopen = gz_bridge_complete_inquiry($old, [
+            'status' => 'new',
+            'new_desk_task_ids' => [501, 502],
+        ]);
+        inquiry_sync_same((int)$secondReopen['new_desk_tasks'], 2, 'Id-only reopen count');
+        inquiry_sync_expect_desk($new, 504, 'pending_accept', 0);
+
+        $ignoredDispatchIds = gz_bridge_complete_inquiry($old, [
+            'status' => 'replied',
+            'staging_id' => $stagingId,
+            'hk_inquiry_id' => 880338,
+            'dispatch_next_task_ids' => [504],
+        ]);
+        inquiry_sync_same((int)$ignoredDispatchIds['new_desk_tasks'], 2, 'Staging fallback count');
+        inquiry_sync_expect_desk($new, 504, 'pending_accept', 0);
+
+        $new->exec("UPDATE desk_tasks SET status='in_progress', progress=0 WHERE id=501");
+        $new->exec("UPDATE desk_task_members SET status='in_progress' WHERE task_id=501");
+        $wrongStaging = gz_bridge_complete_inquiry($old, [
+            'status' => 'replied',
+            'staging_id' => 880321,
+            'hk_inquiry_id' => 880338,
+            'new_desk_task_ids' => [501, 504, 505],
+        ]);
+        inquiry_sync_same((int)$wrongStaging['new_desk_tasks'], 1, 'Wrong staging id with matching hk id');
+        inquiry_sync_expect_desk($new, 501, 'done', 100);
+        inquiry_sync_expect_desk($new, 504, 'pending_accept', 0);
+        inquiry_sync_expect_desk($new, 505, 'pending_accept', 0);
+        inquiry_sync_same((string)$old->query('SELECT status FROM website_inquiry_tasks WHERE staging_id=99999')->fetchColumn(), 'pending', 'Wrong staging id touched another inquiry');
+
+        $new->exec('ALTER TABLE desk_tasks ADD completed_at DATETIME(6) NULL');
+        $new->exec("UPDATE desk_tasks SET status='in_progress', progress=40, completed_at=NULL WHERE id=502");
+        $new->exec("UPDATE desk_task_members SET status='pending_accept' WHERE task_id=502");
+        $stamped = gz_bridge_complete_inquiry($old, [
+            'status' => 'closed',
+            'staging_id' => $stagingId,
+            'hk_inquiry_id' => 880338,
+            'new_desk_task_ids' => [502],
+        ]);
+        inquiry_sync_same((int)$stamped['new_desk_tasks'], 1, 'Completed_at desk count');
+        $stamp = $new->query('SELECT status, progress, completed_at FROM desk_tasks WHERE id=502')->fetch();
+        if (($stamp['status'] ?? '') !== 'done' || (int)($stamp['progress'] ?? 0) !== 100 || ($stamp['completed_at'] ?? null) === null) {
+            inquiry_sync_fail('completed_at was not filled when the column exists: ' . json_encode($stamp));
         }
-        if ($pdo->query("SELECT status FROM dispatch_next_tasks WHERE id=880281")->fetchColumn() !== 'pending_accept') {
-            inquiry_sync_fail('Fallback lookup completed a desk task from another inquiry.');
+        $cleared = gz_bridge_complete_inquiry($old, [
+            'status' => 'processing',
+            'new_desk_task_ids' => [502],
+        ]);
+        inquiry_sync_same((int)$cleared['new_desk_tasks'], 1, 'Clear completed_at count');
+        $clearedRow = $new->query('SELECT status, progress, completed_at FROM desk_tasks WHERE id=502')->fetch();
+        if (($clearedRow['status'] ?? '') !== 'in_progress' || (int)($clearedRow['progress'] ?? -1) !== 0 || $clearedRow['completed_at'] !== null) {
+            inquiry_sync_fail('Reopen did not clear completed_at: ' . json_encode($clearedRow));
         }
-        echo "desk mysql integration passed\n";
+        inquiry_sync_expect_desk($new, 501, 'done', 100);
+
+        $GLOBALS['gz_bridge_new_erp_override'] = $missing;
+        $missingTable = gz_bridge_complete_inquiry($old, [
+            'status' => 'replied',
+            'new_desk_task_ids' => [502],
+        ]);
+        inquiry_sync_same((int)$missingTable['new_desk_tasks'], 0, 'Missing desk table count');
+        if (!isset($missingTable['new_desk_error']) || $missingTable['new_desk_error'] === '') {
+            inquiry_sync_fail('Missing desk_tasks did not report an error.');
+        }
+        inquiry_sync_expect_desk($new, 502, 'in_progress', 0);
+        echo "new desk mysql integration passed\n";
     } finally {
+        unset($GLOBALS['gz_bridge_new_erp_override']);
         $pid = is_file($pidFile) ? (int)trim((string)file_get_contents($pidFile)) : 0;
-        if ($pid > 0 && function_exists('posix_kill')) {
-            posix_kill($pid, 15);
+        if ($pid > 1) {
+            exec('kill -TERM ' . $pid . ' >/dev/null 2>&1');
             $waitUntil = time() + 8;
-            while (time() < $waitUntil && posix_kill($pid, 0)) usleep(100000);
-            if (posix_kill($pid, 0)) posix_kill($pid, 9);
-        } else {
-            proc_terminate($server);
+            while (time() < $waitUntil && is_dir('/proc/' . $pid)) usleep(100000);
+            if (is_dir('/proc/' . $pid)) exec('kill -KILL ' . $pid . ' >/dev/null 2>&1');
         }
-        proc_close($server);
+        if (is_resource($server)) {
+            proc_terminate($server);
+            proc_close($server);
+        }
         inquiry_sync_cleanup_dir($base);
+    }
+}
+
+function inquiry_sync_expect_desk(PDO $pdo, int $id, string $status, int $progress): void
+{
+    $row = $pdo->query('SELECT status, progress FROM desk_tasks WHERE id=' . $id)->fetch();
+    if (!$row || $row['status'] !== $status || (int)$row['progress'] !== $progress) {
+        inquiry_sync_fail('Desk task ' . $id . ' is ' . json_encode($row) . ', expected ' . $status . '/' . $progress);
     }
 }
 
